@@ -201,8 +201,14 @@ if process == "Server/Hardware Assembly" and analysis_mode == "Compare Two Image
 
        rules_text = "\n".join(["- " + k + ": " + str(v) for k, v in rules.items()])
 
-       compare_prompt = "You are an expert hardware design engineer comparing two server/hardware assembly images.\n\n"
-       compare_prompt += "Image A is the REFERENCE/BASELINE (the standard to compare against).\n"
+       compare_prompt = "You are a strict, detail-oriented hardware design engineer performing a formal comparison inspection.\n\n"
+       compare_prompt += "CRITICAL RULES FOR COMPARISON:\n"
+       compare_prompt += "- If the two images appear identical or nearly identical, explicitly state that and do not fabricate differences\n"
+       compare_prompt += "- Only report differences you can clearly see - do not speculate\n"
+       compare_prompt += "- Minor lighting or angle differences between photos are NOT design differences - ignore them\n"
+       compare_prompt += "- Focus on structural, component, and assembly differences only\n"
+       compare_prompt += "- Score both images independently using: (PASS count) / (PASS + FAIL + WARN count) * 100\n\n"
+       compare_prompt += "\nImage A is the REFERENCE/BASELINE (the standard to compare against).\n"
        compare_prompt += "Image B is the CURRENT/PRODUCTION unit being inspected.\n\n"
        compare_prompt += "Check both against these rules:\n" + rules_text + "\n\n"
        compare_prompt += "Provide your analysis in this format:\n\n"
@@ -278,8 +284,17 @@ if uploaded_file is not None:
            media_type = media_types.get(ext, "image/png")
            rules_text = "\n".join(["- " + k + ": " + str(v) for k, v in rules.items()])
            prompt_intro = "a server or hardware assembly" if process == "Server/Hardware Assembly" else "an engineering drawing"
-           prompt = "You are an expert hardware design engineer reviewing " + prompt_intro + ".\n\n"
-           prompt += "Analyze this image carefully and check against these rules:\n" + rules_text + "\n\n"
+           prompt = "You are a strict, detail-oriented hardware design engineer performing a formal inspection.\n\n"
+           prompt += "CRITICAL RULES FOR CONSISTENT SCORING:\n"
+           prompt += "- Only mark FAIL if you can clearly see a violation in the image\n"
+           prompt += "- Only mark WARN if something looks suspicious but you cannot confirm\n"
+           prompt += "- Mark PASS only if you can positively confirm the rule is met\n"
+           prompt += "- Mark N/A if the rule cannot be assessed from this image\n"
+           prompt += "- Do NOT guess or assume - if you cannot see it clearly, mark N/A\n"
+           prompt += "- Be conservative: when in doubt, mark WARN not PASS\n"
+           prompt += "- Score = (PASS count) / (PASS + FAIL + WARN count) * 100. Exclude N/A from score.\n\n"
+           prompt += "You are reviewing " + prompt_intro + ".\n\n"
+           prompt += "Check against these rules:\n" + rules_text + "\n\n"
            prompt += "For each finding, estimate where in the image the issue is located using percentage coordinates (0,0 is top-left, 100,100 is bottom-right).\n\n"
            prompt += "Return a JSON block wrapped in triple-backtick json fence with structure: "
            prompt += '{\"findings\": [{\"label\": \"desc\", \"status\": \"FAIL/WARN/PASS/N/A\", \"x_pct\": 50, \"y_pct\": 30, \"detail\": \"explanation\"}], \"score\": 82, \"overview\": \"description\"}\n\n'
