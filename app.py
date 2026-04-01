@@ -165,12 +165,15 @@ if process == "Server/Hardware Assembly":
        uploaded_file_b = None
    uploaded_file = None if analysis_mode == "Compare Two Images" else st.file_uploader("Choose an image of the server/hardware", type=["png", "jpg", "jpeg", "webp", "gif"])
 else:
-   upload_type = st.radio("File type:", ["DXF Drawing", "Image"], horizontal=True)
+   upload_type = st.radio("File type:", ["DXF Drawing", "STEP File (3D)", "PDF Drawing", "Image"], horizontal=True)
    if upload_type == "DXF Drawing":
        uploaded_file = st.file_uploader("Choose a .dxf file", type=["dxf"])
+   elif upload_type == "STEP File (3D)":
+       uploaded_file = st.file_uploader("Choose a .step or .stp file", type=["step", "stp"])
+   elif upload_type == "PDF Drawing":
+       uploaded_file = st.file_uploader("Choose a .pdf file", type=["pdf"])
    else:
        uploaded_file = st.file_uploader("Choose an image", type=["png", "jpg", "jpeg", "webp", "gif"])
-
 if process == "Server/Hardware Assembly" and analysis_mode == "Compare Two Images" and uploaded_file_a is not None and uploaded_file_b is not None:
    import boto3
    from PIL import Image as PILImage

@@ -2,3 +2,5 @@ ezdxf
 streamlit
 matplotlib
 fpdf2
+boto3
+Pillow
