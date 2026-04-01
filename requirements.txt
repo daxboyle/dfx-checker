@@ -1,3 +1,4 @@
 ezdxf
 streamlit
 matplotlib
+fpdf2

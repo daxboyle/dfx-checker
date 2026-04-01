@@ -90,7 +90,6 @@ if uploaded_file is not None:
    errors = []
    warnings = []
    passed = []
-   # Store markup annotations: (x, y, color, label)
    markups = []
 
    # --- RULE: Hole Size ---
@@ -100,11 +99,11 @@ if uploaded_file is not None:
        loc = f"at ({cx:.1f}, {cy:.1f})"
        if r < rules["min_hole_radius"]:
            errors.append(
-               f"❌ **Hole #{i+1}** {loc}: radius {r:.2f}mm < min {rules['min_hole_radius']}mm"
+               f"Hole #{i+1} {loc}: radius {r:.2f}mm < min {rules['min_hole_radius']}mm"
            )
            markups.append({"type": "circle", "x": cx, "y": cy, "r": r, "color": "red", "label": f"H{i+1}: too small"})
        else:
-           passed.append(f"✅ **Hole #{i+1}** {loc}: radius {r:.2f}mm — OK")
+           passed.append(f"Hole #{i+1} {loc}: radius {r:.2f}mm - OK")
            markups.append({"type": "circle", "x": cx, "y": cy, "r": r, "color": "green", "label": ""})
 
    # --- RULE: Hole Spacing ---
@@ -114,11 +113,9 @@ if uploaded_file is not None:
            c2 = circles[j].dxf.center
            dist = math.sqrt((c2.x - c1.x) ** 2 + (c2.y - c1.y) ** 2)
            edge_dist = dist - circles[i].dxf.radius - circles[j].dxf.radius
-           mid_x = (c1.x + c2.x) / 2
-           mid_y = (c1.y + c2.y) / 2
            if edge_dist < rules["min_hole_spacing"]:
                errors.append(
-                   f"❌ **Holes #{i+1} & #{j+1}**: edge spacing {edge_dist:.2f}mm "
+                   f"Holes #{i+1} & #{j+1}: edge spacing {edge_dist:.2f}mm "
                    f"< min {rules['min_hole_spacing']}mm"
                )
                markups.append({"type": "line_between", "x1": c1.x, "y1": c1.y,
@@ -126,7 +123,7 @@ if uploaded_file is not None:
                                "label": f"{edge_dist:.1f}mm"})
            else:
                passed.append(
-                   f"✅ **Holes #{i+1} & #{j+1}**: edge spacing {edge_dist:.2f}mm — OK"
+                   f"Holes #{i+1} & #{j+1}: edge spacing {edge_dist:.2f}mm - OK"
                )
 
    # --- RULE: Arc Radius ---
@@ -136,11 +133,11 @@ if uploaded_file is not None:
        loc = f"at ({cx:.1f}, {cy:.1f})"
        if r < rules["min_arc_radius"]:
            errors.append(
-               f"❌ **Arc #{i+1}** {loc}: radius {r:.2f}mm < min {rules['min_arc_radius']}mm"
+               f"Arc #{i+1} {loc}: radius {r:.2f}mm < min {rules['min_arc_radius']}mm"
            )
            markups.append({"type": "point", "x": cx, "y": cy, "color": "red", "label": f"Arc: {r:.2f}mm"})
        else:
-           passed.append(f"✅ **Arc #{i+1}** {loc}: radius {r:.2f}mm — OK")
+           passed.append(f"Arc #{i+1} {loc}: radius {r:.2f}mm - OK")
            markups.append({"type": "point", "x": cx, "y": cy, "color": "green", "label": ""})
 
    # --- RULE: Short Lines ---
@@ -150,10 +147,10 @@ if uploaded_file is not None:
        if length < rules["min_line_length"]:
            mid_x, mid_y = (s.x + e.x) / 2, (s.y + e.y) / 2
            warnings.append(
-               f"⚠️ **Line #{i+1}** at ({mid_x:.1f}, {mid_y:.1f}): "
-               f"length {length:.2f}mm — possible sliver"
+               f"Line #{i+1} at ({mid_x:.1f}, {mid_y:.1f}): "
+               f"length {length:.2f}mm - possible sliver"
            )
-           markups.append({"type": "point", "x": mid_x, "y": mid_y, "color": "orange", "label": f"Sliver"})
+           markups.append({"type": "point", "x": mid_x, "y": mid_y, "color": "orange", "label": "Sliver"})
 
    # --- RULE: Wall Thickness ---
    horizontal = []
@@ -175,7 +172,7 @@ if uploaded_file is not None:
                mid_x = (horizontal[i].dxf.start.x + horizontal[i].dxf.end.x) / 2
                mid_y = (y1 + y2) / 2
                errors.append(
-                   f"❌ **Thin wall** at ({mid_x:.1f}, {mid_y:.1f}): "
+                   f"Thin wall at ({mid_x:.1f}, {mid_y:.1f}): "
                    f"{gap:.2f}mm < min {rules['min_wall_thickness']}mm"
                )
                markups.append({"type": "rect", "x": horizontal[i].dxf.start.x,
@@ -191,7 +188,7 @@ if uploaded_file is not None:
                mid_y = (vertical[i].dxf.start.y + vertical[i].dxf.end.y) / 2
                mid_x = (x1 + x2) / 2
                errors.append(
-                   f"❌ **Thin wall** at ({mid_x:.1f}, {mid_y:.1f}): "
+                   f"Thin wall at ({mid_x:.1f}, {mid_y:.1f}): "
                    f"{gap:.2f}mm < min {rules['min_wall_thickness']}mm"
                )
                markups.append({"type": "rect", "x": min(x1, x2), "y": vertical[i].dxf.start.y,
@@ -205,7 +202,6 @@ if uploaded_file is not None:
    ax.set_facecolor('#1a1a2e')
    fig.patch.set_facecolor('#1a1a2e')
 
-   # Draw all geometry in gray first
    for line in lines:
        s, e = line.dxf.start, line.dxf.end
        ax.plot([s.x, e.x], [s.y, e.y], color='#555555', linewidth=0.8)
@@ -220,7 +216,6 @@ if uploaded_file is not None:
                         color='#555555', linewidth=0.8)
        ax.add_patch(a)
 
-   # Draw markups on top
    for m in markups:
        if m["type"] == "circle":
            highlight = plt.Circle((m["x"], m["y"]), m["r"] + 1,
@@ -253,7 +248,6 @@ if uploaded_file is not None:
                ax.annotate(m["label"], (m["x"] + m["w"]/2, m["y"] + m["h"]/2),
                           color='white', fontsize=8, fontweight='bold', ha='center')
 
-   # Legend
    legend_elements = [
        plt.Line2D([0], [0], color='red', linewidth=2, linestyle='--', label='Error'),
        plt.Line2D([0], [0], color='orange', linewidth=2, linestyle='--', label='Warning'),
@@ -272,29 +266,92 @@ if uploaded_file is not None:
    st.pyplot(fig)
 
    # --- TEXT RESULTS ---
-   st.subheader(f"Results — {process}")
+   st.subheader(f"Results - {process}")
 
    if errors:
-       st.error(f"🚫 {len(errors)} Error(s)")
+       st.error(f"Found {len(errors)} error(s)")
        for e in errors:
-           st.write(e)
+           st.write(f"X {e}")
    if warnings:
-       st.warning(f"⚠️ {len(warnings)} Warning(s)")
+       st.warning(f"Found {len(warnings)} warning(s)")
        for w in warnings:
-           st.write(w)
+           st.write(f"! {w}")
    if passed:
-       with st.expander(f"✅ {len(passed)} Passed", expanded=False):
+       with st.expander(f"{len(passed)} check(s) passed", expanded=False):
            for p in passed:
-               st.write(p)
+               st.write(f"OK: {p}")
 
    if not errors and not warnings:
        st.balloons()
-       st.success("🎉 All checks passed!")
+       st.success("All checks passed!")
 
    total = len(errors) + len(warnings) + len(passed)
+   score = 0
    if total > 0:
        score = int((len(passed) / total) * 100)
        st.subheader(f"Design Score: {score}%")
        st.progress(score / 100)
+
+   # --- PDF REPORT ---
+   st.subheader("Export Report")
+
+   markup_path = tempfile.mktemp(suffix=".png")
+   fig.savefig(markup_path, dpi=150, bbox_inches='tight', facecolor=fig.get_facecolor())
+
+   from fpdf import FPDF
+
+   def clean(text):
+       return (text.replace("--", "-").replace("'", "'")
+               .replace("\u201c", '"').replace("\u201d", '"')
+               .replace("\u2014", "-").replace("\u2013", "-"))
+
+   pdf = FPDF()
+   pdf.add_page()
+   pdf.set_font("Helvetica", "B", 20)
+   pdf.cell(0, 15, "DFX Design Check Report", new_x="LMARGIN", new_y="NEXT", align="C")
+
+   pdf.set_font("Helvetica", "", 12)
+   pdf.cell(0, 10, f"Process: {process}", new_x="LMARGIN", new_y="NEXT")
+   pdf.cell(0, 10, f"File: {uploaded_file.name}", new_x="LMARGIN", new_y="NEXT")
+   pdf.cell(0, 10, f"Score: {score}%", new_x="LMARGIN", new_y="NEXT")
+   pdf.cell(0, 10, f"Errors: {len(errors)} | Warnings: {len(warnings)} | Passed: {len(passed)}", new_x="LMARGIN", new_y="NEXT")
+   pdf.ln(5)
+
+   pdf.image(markup_path, x=10, w=190)
+   pdf.ln(5)
+
+   if errors:
+       pdf.set_font("Helvetica", "B", 14)
+       pdf.set_text_color(200, 0, 0)
+       pdf.cell(0, 10, f"Errors ({len(errors)})", new_x="LMARGIN", new_y="NEXT")
+       pdf.set_font("Helvetica", "", 10)
+       for e in errors:
+           pdf.cell(0, 7, clean(e), new_x="LMARGIN", new_y="NEXT")
+
+   if warnings:
+       pdf.set_font("Helvetica", "B", 14)
+       pdf.set_text_color(200, 150, 0)
+       pdf.cell(0, 10, f"Warnings ({len(warnings)})", new_x="LMARGIN", new_y="NEXT")
+       pdf.set_font("Helvetica", "", 10)
+       for w in warnings:
+           pdf.cell(0, 7, clean(w), new_x="LMARGIN", new_y="NEXT")
+
+   if passed:
+       pdf.set_font("Helvetica", "B", 14)
+       pdf.set_text_color(0, 150, 0)
+       pdf.cell(0, 10, f"Passed ({len(passed)})", new_x="LMARGIN", new_y="NEXT")
+       pdf.set_font("Helvetica", "", 10)
+       for p in passed:
+           pdf.cell(0, 7, clean(p), new_x="LMARGIN", new_y="NEXT")
+
+   pdf_bytes = pdf.output()
+   os.unlink(markup_path)
+
+   st.download_button(
+       label="Download PDF Report",
+       data=bytes(pdf_bytes),
+       file_name=f"dfx_report_{uploaded_file.name}.pdf",
+       mime="application/pdf",
+   )
 
    os.unlink(tmp_path)
