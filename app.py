@@ -151,13 +151,107 @@ st.write("Upload a file to check against **" + process + "** rules.")
 
 if process == "Server/Hardware Assembly":
    upload_type = "Image"
-   uploaded_file = st.file_uploader("Choose an image of the server/hardware", type=["png", "jpg", "jpeg", "webp", "gif"])
+   analysis_mode = st.radio("Analysis mode:", ["Single Image", "Compare Two Images"], horizontal=True)
+   if analysis_mode == "Compare Two Images":
+       col_a, col_b = st.columns(2)
+       with col_a:
+           st.write("**Image A (Reference/Baseline)**")
+           uploaded_file_a = st.file_uploader("Upload Image A", type=["png", "jpg", "jpeg", "webp", "gif"], key="img_a")
+       with col_b:
+           st.write("**Image B (Current/Production)**")
+           uploaded_file_b = st.file_uploader("Upload Image B", type=["png", "jpg", "jpeg", "webp", "gif"], key="img_b")
+   else:
+       uploaded_file_a = None
+       uploaded_file_b = None
+   uploaded_file = None if analysis_mode == "Compare Two Images" else st.file_uploader("Choose an image of the server/hardware", type=["png", "jpg", "jpeg", "webp", "gif"])
 else:
    upload_type = st.radio("File type:", ["DXF Drawing", "Image"], horizontal=True)
    if upload_type == "DXF Drawing":
        uploaded_file = st.file_uploader("Choose a .dxf file", type=["dxf"])
    else:
        uploaded_file = st.file_uploader("Choose an image", type=["png", "jpg", "jpeg", "webp", "gif"])
+
+if process == "Server/Hardware Assembly" and analysis_mode == "Compare Two Images" and uploaded_file_a is not None and uploaded_file_b is not None:
+   import boto3
+   from PIL import Image as PILImage
+
+   col_show_a, col_show_b = st.columns(2)
+   with col_show_a:
+       st.image(uploaded_file_a, caption="Image A (Reference)", use_container_width=True)
+   with col_show_b:
+       st.image(uploaded_file_b, caption="Image B (Current)", use_container_width=True)
+
+   uploaded_file_a.seek(0)
+   uploaded_file_b.seek(0)
+
+   with st.spinner("Comparing images with AI..."):
+       img_a_bytes = uploaded_file_a.read()
+       img_b_bytes = uploaded_file_b.read()
+       img_a_b64 = base64.b64encode(img_a_bytes).decode()
+       img_b_b64 = base64.b64encode(img_b_bytes).decode()
+
+       ext_a = uploaded_file_a.name.split(".")[-1].lower()
+       ext_b = uploaded_file_b.name.split(".")[-1].lower()
+       media_types = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "webp": "image/webp", "gif": "image/gif"}
+       media_a = media_types.get(ext_a, "image/png")
+       media_b = media_types.get(ext_b, "image/png")
+
+       rules_text = "\n".join(["- " + k + ": " + str(v) for k, v in rules.items()])
+
+       compare_prompt = "You are an expert hardware design engineer comparing two server/hardware assembly images.\n\n"
+       compare_prompt += "Image A is the REFERENCE/BASELINE (the standard to compare against).\n"
+       compare_prompt += "Image B is the CURRENT/PRODUCTION unit being inspected.\n\n"
+       compare_prompt += "Check both against these rules:\n" + rules_text + "\n\n"
+       compare_prompt += "Provide your analysis in this format:\n\n"
+       compare_prompt += "## Overview\n(What you see in each image)\n\n"
+       compare_prompt += "## Differences Found\n(List every difference between A and B, with location descriptions)\n\n"
+       compare_prompt += "## Rule Comparison\n(For each rule, which image is better and why)\n\n"
+       compare_prompt += "## Issues in Image B Not Present in Image A\n(Defects, missing components, misalignments)\n\n"
+       compare_prompt += "## Score\n- Image A score: X%\n- Image B score: X%\n\n"
+       compare_prompt += "## Recommendations\n(What needs to be fixed in Image B to match Image A)"
+
+       client = boto3.client("bedrock-runtime", region_name="us-west-2")
+       body_data = {
+           "anthropic_version": "bedrock-2023-05-31",
+           "max_tokens": 4000,
+           "messages": [{
+               "role": "user",
+               "content": [
+                   {"type": "text", "text": "Image A (Reference):"},
+                   {"type": "image", "source": {"type": "base64", "media_type": media_a, "data": img_a_b64}},
+                   {"type": "text", "text": "Image B (Current/Production):"},
+                   {"type": "image", "source": {"type": "base64", "media_type": media_b, "data": img_b_b64}},
+                   {"type": "text", "text": compare_prompt}
+               ]
+           }]
+       }
+       response = client.invoke_model(modelId="anthropic.claude-3-haiku-20240307-v1:0", body=json.dumps(body_data))
+       result = json.loads(response["body"].read())
+       comparison = result["content"][0]["text"]
+
+   st.subheader("Comparison Results")
+   st.markdown(comparison)
+
+   st.subheader("Export Report")
+   from fpdf import FPDF
+   pdf = FPDF()
+   pdf.add_page()
+   pdf.set_font("Helvetica", "B", 20)
+   pdf.cell(0, 15, "DFX Comparison Report", new_x="LMARGIN", new_y="NEXT", align="C")
+   pdf.set_font("Helvetica", "", 12)
+   pdf.cell(0, 10, "Image A: " + clean_pdf(uploaded_file_a.name), new_x="LMARGIN", new_y="NEXT")
+   pdf.cell(0, 10, "Image B: " + clean_pdf(uploaded_file_b.name), new_x="LMARGIN", new_y="NEXT")
+   pdf.ln(5)
+   pdf.set_font("Helvetica", "", 10)
+   for pdfline in comparison.split("\n"):
+       cleaned = clean_pdf(pdfline.replace("#", "").strip())
+       if cleaned:
+           pdf.cell(0, 6, cleaned, new_x="LMARGIN", new_y="NEXT")
+   pdf_bytes = pdf.output()
+   st.download_button(label="Download Comparison Report", data=bytes(pdf_bytes), file_name="dfx_comparison_report.pdf", mime="application/pdf")
+
+elif uploaded_file is not None or (process != "Server/Hardware Assembly" and uploaded_file is not None):
+   pass
 
 if uploaded_file is not None:
 
