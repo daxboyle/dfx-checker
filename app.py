@@ -145,10 +145,10 @@ if uploaded_file is not None:
 
        findings = []
        try:
-           jm = "` + "`" + "`json"
+           jm = "```json"
            js = analysis.find(jm)
            if js >= 0:
-               je = analysis.find("` + "`" + '`' + '`", js + len(jm))
+               je = analysis.find("```", js + len(jm))
                if je >= 0:
                    findings = json.loads(analysis[js + len(jm):je].strip()).get("findings", [])
        except Exception:
@@ -192,10 +192,10 @@ if uploaded_file is not None:
        st.subheader("AI Analysis - " + process)
        display_text = analysis
        try:
-           jm = "` + "`" + "`json"
+           jm = "```json"
            js = analysis.find(jm)
            if js >= 0:
-               je = analysis.find("` + "`" + '`' + '`", js + len(jm))
+               je = analysis.find("```", js + len(jm))
                if je >= 0:
                    display_text = analysis[je + 3:].strip()
        except Exception:
