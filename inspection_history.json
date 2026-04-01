@@ -1,0 +1,11 @@
+[
+  {
+    "timestamp": "2026-04-01T12:34:57.909185",
+    "reference": "Test Reference.png",
+    "production_file": "Screenshot 2026-03-31 at 8.53.46\u202fPM.png",
+    "verdict": "PASS",
+    "score": 90,
+    "threshold": 80,
+    "defect_count": 2
+  }
+]

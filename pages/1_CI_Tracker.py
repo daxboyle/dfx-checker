@@ -56,7 +56,7 @@ def route_engineer_level(impact, effort):
 history = load_history()
 ci_data = load_ci()
 
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Dashboard", "CI Intake", "CI Pipeline", "Impact Matrix", "Lessons Learned", "Trends"])
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["Dashboard", "CI Intake", "CI Pipeline", "Impact Matrix", "Semantic Search", "Lessons Learned", "Trends"])
 
 with tab1:
     st.subheader("Overview")
@@ -228,7 +228,7 @@ with tab4:
     else:
         st.info("No open CIs. Submit CIs through the Intake tab.")
 
-with tab5:
+with tab7:
     st.subheader("Lessons Learned")
     with st.expander("Add Lesson", expanded=False):
         les_title = st.text_input("Title:", key="lt")
@@ -256,6 +256,84 @@ with tab5:
         with st.expander("[" + lesson.get("category", "") + "] " + lesson.get("title", "") + cross_tag):
             st.write(lesson.get("detail", ""))
             st.write("**Impact:** " + lesson.get("impact", "") + " | **Platform:** " + lesson.get("platform", "") + " | **Date:** " + lesson.get("date", "")[:10])
+
+
+with tab5:
+    st.subheader("Semantic Search - Have We Seen This Before?")
+    st.write("Search across all CIs, lessons learned, and inspection history using natural language.")
+
+    search_query = st.text_area("Describe the issue or question:", height=100, placeholder="e.g. thermal issues with cable routing near fans on Gen3 servers")
+
+    if st.button("Search", type="primary") and search_query:
+        import boto3
+        with st.spinner("Searching across all data..."):
+            all_cis = ci_data.get("cis", [])
+            all_lessons = ci_data.get("lessons", [])
+
+            ci_summaries = []
+            for c in all_cis:
+                summary = "CI-" + str(c.get("id", "")) + ": " + c.get("title", "") + " | "
+                summary += "Category: " + c.get("category", "") + " | "
+                summary += "Platform: " + c.get("platform", "") + " " + c.get("generation", "") + " | "
+                summary += "Vendor: " + c.get("vendor", "") + " | "
+                summary += "Status: " + c.get("status", "") + " | "
+                summary += "Impact: " + c.get("impact", "") + " | "
+                summary += "Description: " + c.get("description", "")[:200] + " | "
+                summary += "Outcome: " + c.get("outcome", "")
+                ci_summaries.append(summary)
+
+            lesson_summaries = []
+            for l in all_lessons:
+                summary = "Lesson-" + str(l.get("id", "")) + ": " + l.get("title", "") + " | "
+                summary += "Category: " + l.get("category", "") + " | "
+                summary += "Platform: " + l.get("platform", "") + " | "
+                summary += "Detail: " + l.get("detail", "")[:200]
+                lesson_summaries.append(summary)
+
+            inspection_summaries = []
+            for h in history:
+                summary = "Inspection: " + h.get("reference", "") + " vs " + h.get("production_file", "") + " | "
+                summary += "Verdict: " + h.get("verdict", "") + " | "
+                summary += "Score: " + str(h.get("score", 0)) + "% | "
+                summary += "Defects: " + str(h.get("defect_count", 0))
+                inspection_summaries.append(summary)
+
+            all_data = "CONTINUOUS IMPROVEMENT RECORDS:\n"
+            if ci_summaries:
+                all_data += "\n".join(ci_summaries) + "\n\n"
+            all_data += "LESSONS LEARNED:\n"
+            if lesson_summaries:
+                all_data += "\n".join(lesson_summaries) + "\n\n"
+            all_data += "INSPECTION HISTORY:\n"
+            if inspection_summaries:
+                all_data += "\n".join(inspection_summaries)
+
+            prompt = "You are a manufacturing knowledge search assistant.\n\n"
+            prompt += "A user is searching for: " + search_query + "\n\n"
+            prompt += "Here is all available data from our CI system:\n\n" + all_data + "\n\n"
+            prompt += "INSTRUCTIONS:\n"
+            prompt += "- Find ALL records that are relevant to the search query\n"
+            prompt += "- Rank results by relevance\n"
+            prompt += "- For each match, explain WHY it is relevant\n"
+            prompt += "- Identify patterns across matches (e.g. same vendor, same platform, recurring issue)\n"
+            prompt += "- Suggest cross-platform applicability if relevant\n"
+            prompt += "- If nothing matches, say so clearly\n\n"
+            prompt += "Format:\n## Matching Records\n(list each with relevance explanation)\n\n"
+            prompt += "## Patterns Identified\n(recurring themes across matches)\n\n"
+            prompt += "## Cross-Platform Applicability\n(could this apply to other platforms?)\n\n"
+            prompt += "## Recommendation\n(what should the user do based on past data?)"
+
+            client = boto3.client("bedrock-runtime", region_name="us-west-2")
+            body_data = {"anthropic_version": "bedrock-2023-05-31", "max_tokens": 4000,
+                "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}]}]}
+            response = client.invoke_model(modelId="anthropic.claude-3-haiku-20240307-v1:0", body=json.dumps(body_data))
+            result = json.loads(response["body"].read())
+            answer = result["content"][0]["text"]
+
+        st.markdown(answer)
+
+    if not ci_data.get("cis") and not ci_data.get("lessons") and not history:
+        st.info("No data to search yet. Submit CIs, lessons, and run inspections to build the knowledge base.")
 
 with tab6:
     st.subheader("Trends")

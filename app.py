@@ -20,6 +20,19 @@ def clean_pdf(text):
 
 
 PROFILES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "profiles.json")
+CUSTOM_RULES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "custom_rules.json")
+
+
+def load_custom_rules():
+   if os.path.exists(CUSTOM_RULES_FILE):
+       with open(CUSTOM_RULES_FILE, "r") as f:
+           return json.load(f)
+   return {}
+
+
+def save_custom_rules(rules_data):
+   with open(CUSTOM_RULES_FILE, "w") as f:
+       json.dump(rules_data, f, indent=2)
 
 
 def load_profiles():
@@ -147,6 +160,44 @@ if process != "Server/Hardware Assembly":
            st.sidebar.success("Deleted!")
            st.rerun()
 
+# --- CUSTOM RULES EDITOR ---
+st.sidebar.header("Custom Rules")
+custom_rules_all = load_custom_rules()
+custom_rules_for_process = custom_rules_all.get(process, [])
+
+# Show existing custom rules
+if custom_rules_for_process:
+   st.sidebar.write("**Active custom rules for " + process + ":**")
+   rules_to_delete = []
+   for idx, cr in enumerate(custom_rules_for_process):
+       col_cr, col_del = st.sidebar.columns([4, 1])
+       with col_cr:
+           st.write("- " + cr.get("name", "") + ": " + str(cr.get("value", "")) + " " + cr.get("unit", ""))
+       with col_del:
+           if st.button("X", key="del_cr_" + str(idx)):
+               rules_to_delete.append(idx)
+   if rules_to_delete:
+       for idx in sorted(rules_to_delete, reverse=True):
+           custom_rules_for_process.pop(idx)
+       custom_rules_all[process] = custom_rules_for_process
+       save_custom_rules(custom_rules_all)
+       st.rerun()
+
+with st.sidebar.expander("Add Custom Rule"):
+   cr_name = st.text_input("Rule name (e.g. Min screw torque):", key="cr_name")
+   cr_value = st.text_input("Threshold value (e.g. 5):", key="cr_value")
+   cr_unit = st.text_input("Unit (e.g. in-lbs, mm, degrees):", key="cr_unit")
+   cr_type = st.selectbox("Check type:", ["minimum", "maximum", "must have", "must not have"], key="cr_type")
+   cr_description = st.text_input("Description (optional):", key="cr_desc")
+   if st.button("Add Rule", key="add_cr"):
+       if cr_name:
+           new_rule = {"name": cr_name, "value": cr_value, "unit": cr_unit, "check_type": cr_type, "description": cr_description}
+           custom_rules_for_process.append(new_rule)
+           custom_rules_all[process] = custom_rules_for_process
+           save_custom_rules(custom_rules_all)
+           st.success("Added: " + cr_name)
+           st.rerun()
+
 st.write("Upload a file to check against **" + process + "** rules.")
 
 if process == "Server/Hardware Assembly":
@@ -240,6 +291,14 @@ if process == "Server/Hardware Assembly":
                    media_p = media_types.get(ext_p, "image/png")
 
                    rules_text = "\n".join(["- " + k + ": " + str(v) for k, v in rules.items()])
+           custom_rules_for_ai = load_custom_rules().get(process, [])
+           if custom_rules_for_ai:
+               rules_text += "\n\nCUSTOM RULES (must also check these):"
+               for cr in custom_rules_for_ai:
+                   rule_line = "- " + cr.get("name", "") + ": " + cr.get("check_type", "") + " " + str(cr.get("value", "")) + " " + cr.get("unit", "")
+                   if cr.get("description"):
+                       rule_line += " (" + cr["description"] + ")"
+                   rules_text += "\n" + rule_line
 
                    inspect_prompt = "You are a strict quality inspector performing a GO/NO-GO inspection.\n\n"
                    inspect_prompt += "REFERENCE IMAGE: This is the APPROVED, CORRECT assembly. Treat it as the gold standard.\n"
@@ -322,20 +381,21 @@ if process == "Server/Hardware Assembly":
                    with st.expander("Full Inspection Report"):
                        st.markdown(display_text)
 
-               # Save to history
-               import datetime
-               history = load_history()
-               history.append({
-                   "timestamp": datetime.datetime.now().isoformat(),
-                   "reference": os.path.basename(ref_image_path),
-                   "production_file": inspect_file.name,
-                   "verdict": ai_verdict,
-                   "score": ai_score,
-                   "threshold": threshold,
-                   "defect_count": len(defects),
-               })
-               save_history(history)
-
+               log_to_ci = st.checkbox("Log this inspection to CI Tracker", value=(ai_verdict == "FAIL"))
+               if log_to_ci:
+                   import datetime
+                   history = load_history()
+                   history.append({
+                       "timestamp": datetime.datetime.now().isoformat(),
+                       "reference": os.path.basename(ref_image_path),
+                       "production_file": inspect_file.name,
+                       "verdict": ai_verdict,
+                       "score": ai_score,
+                       "threshold": threshold,
+                       "defect_count": len(defects),
+                   })
+                   save_history(history)
+                   st.success("Logged to CI Tracker")
                # PDF report
                from fpdf import FPDF
                pdf = FPDF()
@@ -414,6 +474,14 @@ if process == "Server/Hardware Assembly" and analysis_mode == "Compare Two Image
        media_b = media_types.get(ext_b, "image/png")
 
        rules_text = "\n".join(["- " + k + ": " + str(v) for k, v in rules.items()])
+       custom_rules_for_ai = load_custom_rules().get(process, [])
+       if custom_rules_for_ai:
+           rules_text += "\n\nCUSTOM RULES (must also check these):"
+           for cr in custom_rules_for_ai:
+                   rule_line = "- " + cr.get("name", "") + ": " + cr.get("check_type", "") + " " + str(cr.get("value", "")) + " " + cr.get("unit", "")
+                   if cr.get("description"):
+                       rule_line += " (" + cr["description"] + ")"
+                   rules_text += "\n" + rule_line
 
        compare_prompt = "You are a strict, detail-oriented hardware design engineer performing a formal comparison inspection.\n\n"
        compare_prompt += "CRITICAL RULES FOR COMPARISON:\n"
@@ -497,6 +565,14 @@ if uploaded_file is not None:
            media_types = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "webp": "image/webp", "gif": "image/gif"}
            media_type = media_types.get(ext, "image/png")
            rules_text = "\n".join(["- " + k + ": " + str(v) for k, v in rules.items()])
+           custom_rules_for_ai = load_custom_rules().get(process, [])
+           if custom_rules_for_ai:
+               rules_text += "\n\nCUSTOM RULES (must also check these):"
+               for cr in custom_rules_for_ai:
+                   rule_line = "- " + cr.get("name", "") + ": " + cr.get("check_type", "") + " " + str(cr.get("value", "")) + " " + cr.get("unit", "")
+                   if cr.get("description"):
+                       rule_line += " (" + cr["description"] + ")"
+                   rules_text += "\n" + rule_line
            prompt_intro = "a server or hardware assembly" if process == "Server/Hardware Assembly" else "an engineering drawing"
            prompt = "You are a strict, detail-oriented hardware design engineer performing a formal inspection.\n\n"
            prompt += "CRITICAL RULES FOR CONSISTENT SCORING:\n"
