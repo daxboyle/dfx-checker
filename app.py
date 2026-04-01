@@ -151,7 +151,7 @@ st.write("Upload a file to check against **" + process + "** rules.")
 
 if process == "Server/Hardware Assembly":
    upload_type = "Image"
-   analysis_mode = st.radio("Analysis mode:", ["Single Image", "Compare Two Images"], horizontal=True)
+   analysis_mode = st.radio("Analysis mode:", ["Single Image", "Compare Two Images", "Inspection Mode"], horizontal=True)
    if analysis_mode == "Compare Two Images":
        col_a, col_b = st.columns(2)
        with col_a:
@@ -163,7 +163,221 @@ if process == "Server/Hardware Assembly":
    else:
        uploaded_file_a = None
        uploaded_file_b = None
-   uploaded_file = None if analysis_mode == "Compare Two Images" else st.file_uploader("Choose an image of the server/hardware", type=["png", "jpg", "jpeg", "webp", "gif"])
+   if analysis_mode == "Inspection Mode":
+       REFS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reference_images")
+       HISTORY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "inspection_history.json")
+       os.makedirs(REFS_DIR, exist_ok=True)
+
+       def load_history():
+           if os.path.exists(HISTORY_FILE):
+               with open(HISTORY_FILE, "r") as fh:
+                   return json.load(fh)
+           return []
+
+       def save_history(history):
+           with open(HISTORY_FILE, "w") as fh:
+               json.dump(history, fh, indent=2)
+
+       st.subheader("Inspection Mode")
+
+       # Reference image management
+       st.write("**Step 1: Select or upload a reference image**")
+       existing_refs = [f for f in os.listdir(REFS_DIR) if f.endswith((".png", ".jpg", ".jpeg"))]
+
+       ref_option = st.radio("Reference image:", ["Upload new reference", "Use existing reference"] if existing_refs else ["Upload new reference"], horizontal=True)
+
+       ref_image_path = None
+       if ref_option == "Upload new reference":
+           ref_name = st.text_input("Name this reference (e.g. Server-Gen3-Rev2):")
+           ref_upload = st.file_uploader("Upload reference image", type=["png", "jpg", "jpeg"], key="ref_upload")
+           if ref_upload and ref_name:
+               safe_name = "".join(c for c in ref_name if c.isalnum() or c in "-_ ").strip()
+               ref_path = os.path.join(REFS_DIR, safe_name + ".png")
+               with open(ref_path, "wb") as rf:
+                   rf.write(ref_upload.read())
+               ref_image_path = ref_path
+               st.success("Reference saved: " + safe_name)
+               ref_upload.seek(0)
+       elif existing_refs:
+           selected_ref = st.selectbox("Choose reference:", existing_refs)
+           ref_image_path = os.path.join(REFS_DIR, selected_ref)
+           if st.button("Delete this reference"):
+               os.unlink(ref_image_path)
+               st.success("Deleted!")
+               st.rerun()
+
+       if ref_image_path and os.path.exists(ref_image_path):
+           st.image(ref_image_path, caption="Reference Image", width=400)
+
+       # Production image upload
+       st.write("**Step 2: Upload production image to inspect**")
+       inspect_file = st.file_uploader("Upload production image", type=["png", "jpg", "jpeg", "webp", "gif"], key="inspect_upload")
+
+       # Pass/fail threshold
+       threshold = st.slider("Pass/Fail threshold (%)", min_value=50, max_value=100, value=80, step=5)
+
+       if ref_image_path and os.path.exists(ref_image_path) and inspect_file:
+           col_ref, col_prod = st.columns(2)
+           with col_ref:
+               st.image(ref_image_path, caption="Reference", use_container_width=True)
+           with col_prod:
+               st.image(inspect_file, caption="Production", use_container_width=True)
+
+           inspect_file.seek(0)
+
+           if st.button("Run Inspection", type="primary"):
+               import boto3
+               with st.spinner("Inspecting..."):
+                   with open(ref_image_path, "rb") as rf:
+                       ref_bytes = rf.read()
+                   ref_b64 = base64.b64encode(ref_bytes).decode()
+
+                   prod_bytes = inspect_file.read()
+                   prod_b64 = base64.b64encode(prod_bytes).decode()
+
+                   ext_p = inspect_file.name.split(".")[-1].lower()
+                   media_types = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "webp": "image/webp", "gif": "image/gif"}
+                   media_p = media_types.get(ext_p, "image/png")
+
+                   rules_text = "\n".join(["- " + k + ": " + str(v) for k, v in rules.items()])
+
+                   inspect_prompt = "You are a strict quality inspector performing a GO/NO-GO inspection.\n\n"
+                   inspect_prompt += "REFERENCE IMAGE: This is the APPROVED, CORRECT assembly. Treat it as the gold standard.\n"
+                   inspect_prompt += "PRODUCTION IMAGE: This is the unit being inspected against the reference.\n\n"
+                   inspect_prompt += "CRITICAL INSTRUCTIONS:\n"
+                   inspect_prompt += "- Your ONLY job is to find DIFFERENCES between the production image and the reference image\n"
+                   inspect_prompt += "- Do NOT evaluate general design quality or DFX rules\n"
+                   inspect_prompt += "- Do NOT flag issues that also exist in the reference image - those are by design\n"
+                   inspect_prompt += "- If something looks the same in both images, it is a PASS\n"
+                   inspect_prompt += "- Only flag things in the production image that DIFFER from the reference\n"
+                   inspect_prompt += "- Examples of real defects: missing component, loose cable, misaligned part, extra/missing screw, damaged component\n"
+                   inspect_prompt += "- Ignore lighting, camera angle, and photo quality differences\n"
+                   inspect_prompt += "- If the images look identical, score should be 100% with zero defects\n"
+                   inspect_prompt += "- Score = (matching areas) / (total areas checked) * 100\n\n"
+                   inspect_prompt += "Return a JSON block in triple-backtick json fence:\n"
+                   inspect_prompt += '{"verdict": "PASS" or "FAIL", "score": 85, "defects": [{"description": "what is wrong", "severity": "critical/major/minor", "location": "where in the image"}], "passed_checks": ["list of things that match reference"], "summary": "one sentence verdict"}\n\n'
+                   inspect_prompt += "After JSON, provide a brief human-readable inspection report."
+
+                   client = boto3.client("bedrock-runtime", region_name="us-west-2")
+                   body_data = {
+                       "anthropic_version": "bedrock-2023-05-31",
+                       "max_tokens": 4000,
+                       "messages": [{
+                           "role": "user",
+                           "content": [
+                               {"type": "text", "text": "REFERENCE IMAGE:"},
+                               {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": ref_b64}},
+                               {"type": "text", "text": "PRODUCTION IMAGE:"},
+                               {"type": "image", "source": {"type": "base64", "media_type": media_p, "data": prod_b64}},
+                               {"type": "text", "text": inspect_prompt}
+                           ]
+                       }]
+                   }
+                   response = client.invoke_model(modelId="anthropic.claude-3-haiku-20240307-v1:0", body=json.dumps(body_data))
+                   result_data = json.loads(response["body"].read())
+                   inspection = result_data["content"][0]["text"]
+
+               # Parse verdict
+               verdict_data = {}
+               try:
+                   jm = chr(96)*3 + "json"
+                   js = inspection.find(jm)
+                   if js >= 0:
+                       je = inspection.find(chr(96)*3, js + len(jm))
+                       if je >= 0:
+                           verdict_data = json.loads(inspection[js + len(jm):je].strip())
+               except Exception:
+                   pass
+
+               ai_score = verdict_data.get("score", 0)
+               ai_verdict = "PASS" if ai_score >= threshold else "FAIL"
+               defects = verdict_data.get("defects", [])
+
+               # Big GO/NO-GO display
+               if ai_verdict == "PASS":
+                   st.markdown('<div style="background-color:#0d5016;padding:30px;border-radius:10px;text-align:center;"><h1 style="color:#00ff41;margin:0;">GO - PASS</h1><h3 style="color:#00ff41;margin:0;">Score: ' + str(ai_score) + '% (threshold: ' + str(threshold) + '%)</h3></div>', unsafe_allow_html=True)
+               else:
+                   st.markdown('<div style="background-color:#5c0011;padding:30px;border-radius:10px;text-align:center;"><h1 style="color:#ff4444;margin:0;">NO-GO - FAIL</h1><h3 style="color:#ff4444;margin:0;">Score: ' + str(ai_score) + '% (threshold: ' + str(threshold) + '%)</h3></div>', unsafe_allow_html=True)
+
+               # Defects list
+               if defects:
+                   st.subheader("Defects Found: " + str(len(defects)))
+                   for d in defects:
+                       sev = d.get("severity", "unknown")
+                       icon = "X" if sev == "critical" else "!" if sev == "major" else "~"
+                       st.write(icon + " [" + sev.upper() + "] " + d.get("description", "") + " - Location: " + d.get("location", "unknown"))
+
+               # Full report
+               display_text = inspection
+               try:
+                   jm = chr(96)*3 + "json"
+                   js = inspection.find(jm)
+                   if js >= 0:
+                       je = inspection.find(chr(96)*3, js + len(jm))
+                       if je >= 0:
+                           display_text = inspection[je + 3:].strip()
+               except Exception:
+                   pass
+               if display_text:
+                   with st.expander("Full Inspection Report"):
+                       st.markdown(display_text)
+
+               # Save to history
+               import datetime
+               history = load_history()
+               history.append({
+                   "timestamp": datetime.datetime.now().isoformat(),
+                   "reference": os.path.basename(ref_image_path),
+                   "production_file": inspect_file.name,
+                   "verdict": ai_verdict,
+                   "score": ai_score,
+                   "threshold": threshold,
+                   "defect_count": len(defects),
+               })
+               save_history(history)
+
+               # PDF report
+               from fpdf import FPDF
+               pdf = FPDF()
+               pdf.add_page()
+               pdf.set_font("Helvetica", "B", 24)
+               if ai_verdict == "PASS":
+                   pdf.set_text_color(0, 150, 0)
+                   pdf.cell(0, 20, "INSPECTION: GO - PASS", new_x="LMARGIN", new_y="NEXT", align="C")
+               else:
+                   pdf.set_text_color(200, 0, 0)
+                   pdf.cell(0, 20, "INSPECTION: NO-GO - FAIL", new_x="LMARGIN", new_y="NEXT", align="C")
+               pdf.set_text_color(0, 0, 0)
+               pdf.set_font("Helvetica", "", 12)
+               pdf.cell(0, 10, "Score: " + str(ai_score) + "% (threshold: " + str(threshold) + "%)", new_x="LMARGIN", new_y="NEXT")
+               pdf.cell(0, 10, "Reference: " + clean_pdf(os.path.basename(ref_image_path)), new_x="LMARGIN", new_y="NEXT")
+               pdf.cell(0, 10, "Production: " + clean_pdf(inspect_file.name), new_x="LMARGIN", new_y="NEXT")
+               pdf.cell(0, 10, "Defects: " + str(len(defects)), new_x="LMARGIN", new_y="NEXT")
+               pdf.ln(5)
+               pdf.set_font("Helvetica", "", 10)
+               for pdfline in display_text.split("\n"):
+                   cleaned = clean_pdf(pdfline.replace("#", "").strip())
+                   if cleaned:
+                       pdf.cell(0, 6, cleaned, new_x="LMARGIN", new_y="NEXT")
+               pdf_bytes = pdf.output()
+               st.download_button(label="Download Inspection Report", data=bytes(pdf_bytes), file_name="inspection_report.pdf", mime="application/pdf")
+
+       # Inspection history
+       history = load_history()
+       if history:
+           st.subheader("Inspection History")
+           import pandas
+           df = pandas.DataFrame(history)
+           df = df.sort_values("timestamp", ascending=False)
+           st.dataframe(df, use_container_width=True)
+
+           pass_count = len([h for h in history if h["verdict"] == "PASS"])
+           fail_count = len([h for h in history if h["verdict"] == "FAIL"])
+           st.write("Total: " + str(len(history)) + " inspections | PASS: " + str(pass_count) + " | FAIL: " + str(fail_count) + " | Pass rate: " + str(round(pass_count / len(history) * 100, 1)) + "%")
+
+       uploaded_file = None
+   else:
+       uploaded_file = None if analysis_mode == "Compare Two Images" else st.file_uploader("Choose an image of the server/hardware", type=["png", "jpg", "jpeg", "webp", "gif"])
 else:
    upload_type = st.radio("File type:", ["DXF Drawing", "STEP File (3D)", "PDF Drawing", "Image"], horizontal=True)
    if upload_type == "DXF Drawing":
