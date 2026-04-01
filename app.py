@@ -19,6 +19,21 @@ def clean_pdf(text):
    return "".join(out)
 
 
+PROFILES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "profiles.json")
+
+
+def load_profiles():
+   if os.path.exists(PROFILES_FILE):
+       with open(PROFILES_FILE, "r") as f:
+           return json.load(f)
+   return {}
+
+
+def save_profiles(profiles):
+   with open(PROFILES_FILE, "w") as f:
+       json.dump(profiles, f, indent=2)
+
+
 st.title("DFX Design Checker")
 
 st.sidebar.header("Configuration")
@@ -96,6 +111,41 @@ if process != "Server/Hardware Assembly":
    rules["min_wall_thickness"] = st.sidebar.number_input(
        "Override min wall thickness (mm)", value=rules["min_wall_thickness"], step=0.1
    )
+
+# --- RULE PROFILES ---
+if process != "Server/Hardware Assembly":
+   st.sidebar.header("Rule Profiles")
+   profiles = load_profiles()
+   process_profiles = {k: v for k, v in profiles.items() if v.get("process") == process}
+
+   profile_names = ["(Default)"] + list(process_profiles.keys())
+   selected_profile = st.sidebar.selectbox("Load a saved profile:", profile_names)
+
+   if selected_profile != "(Default)" and selected_profile in profiles:
+       prof = profiles[selected_profile]
+       for key in prof:
+           if key != "process" and key in rules:
+               rules[key] = prof[key]
+       st.sidebar.success("Loaded: " + selected_profile)
+
+   with st.sidebar.expander("Save Current Rules as Profile"):
+       new_profile_name = st.text_input("Profile name (e.g. Vendor A - CNC):")
+       if st.button("Save Profile"):
+           if new_profile_name:
+               profiles[new_profile_name] = dict(rules)
+               profiles[new_profile_name]["process"] = process
+               save_profiles(profiles)
+               st.success("Saved: " + new_profile_name)
+               st.rerun()
+           else:
+               st.warning("Enter a profile name first")
+
+   if selected_profile != "(Default)":
+       if st.sidebar.button("Delete: " + selected_profile):
+           del profiles[selected_profile]
+           save_profiles(profiles)
+           st.sidebar.success("Deleted!")
+           st.rerun()
 
 st.write("Upload a file to check against **" + process + "** rules.")
 
