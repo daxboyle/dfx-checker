@@ -297,32 +297,41 @@ if process == "Server/Hardware Assembly":
                st.image(inspect_file, caption="Production", use_container_width=True)
 
            inspect_file.seek(0)
+           # Cache file data for button rerun
+           if "cached_ref_path" not in st.session_state or st.session_state["cached_ref_path"] != ref_image_path:
+               with open(ref_image_path, "rb") as _crf:
+                   st.session_state["cached_ref_bytes"] = _crf.read()
+               st.session_state["cached_ref_path"] = ref_image_path
+               st.session_state["cached_prod_bytes"] = inspect_file.read()
+               st.session_state["cached_prod_name"] = inspect_file.name
+               st.session_state["cached_prod_ext"] = inspect_file.name.split(".")[-1].lower()
+               inspect_file.seek(0)
 
            if st.button("Run Inspection", type="primary"):
                import boto3
                with st.spinner("Inspecting..."):
-                   with open(ref_image_path, "rb") as rf:
-                       ref_bytes = rf.read()
+                   ref_bytes = st.session_state["cached_ref_bytes"]
                    ref_b64 = base64.b64encode(ref_bytes).decode()
 
-                   prod_bytes = inspect_file.read()
+                   prod_bytes = st.session_state["cached_prod_bytes"]
                    prod_b64 = base64.b64encode(prod_bytes).decode()
 
-                   ext_p = inspect_file.name.split(".")[-1].lower()
+                   ext_p = st.session_state["cached_prod_ext"]
                    media_types = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "webp": "image/webp", "gif": "image/gif"}
                    media_p = media_types.get(ext_p, "image/png")
 
                    rules_text = "\n".join(["- " + k + ": " + str(v) for k, v in rules.items()])
-           custom_rules_for_ai = load_custom_rules().get(process, [])
-           if custom_rules_for_ai:
-               rules_text += "\n\nCUSTOM RULES (must also check these):"
-               for cr in custom_rules_for_ai:
-                   rule_line = "- " + cr.get("name", "") + ": " + cr.get("check_type", "") + " " + str(cr.get("value", "")) + " " + cr.get("unit", "")
-                   if cr.get("description"):
-                       rule_line += " (" + cr["description"] + ")"
-                   rules_text += "\n" + rule_line
+                   custom_rules_for_ai = load_custom_rules().get(process, [])
+                   if custom_rules_for_ai:
+                       rules_text += "\n\nCUSTOM RULES (must also check these):"
+                       for cr in custom_rules_for_ai:
+                           rule_line = "- " + cr.get("name", "") + ": " + cr.get("check_type", "") + " " + str(cr.get("value", "")) + " " + cr.get("unit", "")
+                           if cr.get("description"):
+                               rule_line += " (" + cr["description"] + ")"
+                           rules_text += "\n" + rule_line
 
                    inspect_prompt = "You are a strict quality inspector performing a GO/NO-GO inspection.\n\n"
+                   inspect_prompt += "FIRST: Verify both images show the same type of object/assembly. If they clearly show different things (e.g. one is a server and one is not), immediately FAIL with score 0 and note the mismatch.\n\n"
                    inspect_prompt += "REFERENCE IMAGE: This is the APPROVED, CORRECT assembly. Treat it as the gold standard.\n"
                    inspect_prompt += "PRODUCTION IMAGE: This is the unit being inspected against the reference.\n\n"
                    inspect_prompt += "CRITICAL INSTRUCTIONS:\n"
@@ -337,6 +346,7 @@ if process == "Server/Hardware Assembly":
                    inspect_prompt += "- Score = (matching areas) / (total areas checked) * 100\n\n"
                    inspect_prompt += "Return a JSON block in triple-backtick json fence:\n"
                    inspect_prompt += '{"verdict": "PASS" or "FAIL", "score": 85, "defects": [{"description": "what is wrong", "severity": "critical/major/minor", "location": "where in the image"}], "passed_checks": ["list of things that match reference"], "summary": "one sentence verdict"}\n\n'
+                   inspect_prompt += "CRITICAL FINAL CHECK: If the two images show completely different objects, scenes, or products, you MUST return score: 0 and verdict: FAIL with a defect noting IMAGE MISMATCH. A server compared to a non-server image is an automatic FAIL.\n\n"
                    inspect_prompt += "After JSON, provide a brief human-readable inspection report."
 
                    client = boto3.client("bedrock-runtime", region_name="us-west-2")
@@ -354,8 +364,12 @@ if process == "Server/Hardware Assembly":
                            ]
                        }]
                    }
-                   response = client.invoke_model(modelId="anthropic.claude-3-haiku-20240307-v1:0", body=json.dumps(body_data))
-                   result_data = json.loads(response["body"].read())
+                   try:
+                       response = client.invoke_model(modelId="us.anthropic.claude-sonnet-4-6", body=json.dumps(body_data))
+                       result_data = json.loads(response["body"].read())
+                   except Exception as bedrock_err:
+                       st.error("Bedrock error: " + str(bedrock_err))
+                       st.stop()
                    inspection = result_data["content"][0]["text"]
 
                # Parse verdict
@@ -410,7 +424,7 @@ if process == "Server/Hardware Assembly":
                    history.append({
                        "timestamp": datetime.datetime.now().isoformat(),
                        "reference": os.path.basename(ref_image_path),
-                       "production_file": inspect_file.name,
+                       "production_file": st.session_state.get("cached_prod_name", "unknown"),
                        "verdict": ai_verdict,
                        "score": ai_score,
                        "threshold": threshold,
@@ -433,7 +447,7 @@ if process == "Server/Hardware Assembly":
                pdf.set_font("Helvetica", "", 12)
                pdf.cell(0, 10, "Score: " + str(ai_score) + "% (threshold: " + str(threshold) + "%)", new_x="LMARGIN", new_y="NEXT")
                pdf.cell(0, 10, "Reference: " + clean_pdf(os.path.basename(ref_image_path)), new_x="LMARGIN", new_y="NEXT")
-               pdf.cell(0, 10, "Production: " + clean_pdf(inspect_file.name), new_x="LMARGIN", new_y="NEXT")
+               pdf.cell(0, 10, "Production: " + clean_pdf(st.session_state.get("cached_prod_name", "unknown")), new_x="LMARGIN", new_y="NEXT")
                pdf.cell(0, 10, "Defects: " + str(len(defects)), new_x="LMARGIN", new_y="NEXT")
                pdf.ln(5)
                pdf.set_font("Helvetica", "", 10)
@@ -443,6 +457,31 @@ if process == "Server/Hardware Assembly":
                        pdf.cell(0, 6, cleaned, new_x="LMARGIN", new_y="NEXT")
                pdf_bytes = pdf.output()
                st.download_button(label="Download Inspection Report", data=bytes(pdf_bytes), file_name="inspection_report.pdf", mime="application/pdf")
+
+               # Auto-ticket options on FAIL
+               if ai_verdict == "FAIL":
+                   st.subheader("Create Vendor Ticket")
+                   defect_summary = "INSPECTION FAILURE REPORT\n"
+                   defect_summary += "Reference: " + os.path.basename(st.session_state.get("cached_ref_path", "unknown")) + "\n"
+                   defect_summary += "Production: " + st.session_state.get("cached_prod_name", "unknown") + "\n"
+                   defect_summary += "Score: " + str(ai_score) + "% (threshold: " + str(threshold) + "%)\n"
+                   defect_summary += "Defects: " + str(len(defects)) + "\n\n"
+                   for d in defects:
+                       defect_summary += "- [" + d.get("severity", "unknown").upper() + "] " + d.get("description", "") + "\n"
+                   col_t1, col_t2 = st.columns(2)
+                   with col_t1:
+                       email_body = "Subject: Workmanship Issue - Inspection Failure\n\n"
+                       email_body += "Team,\n\nDuring production inspection, the following unit FAILED:\n\n"
+                       email_body += defect_summary
+                       email_body += "\nPlease provide corrective action plan within 5 business days.\n"
+                       st.text_area("Vendor Email (copy and send):", email_body, height=250, key="vendor_email")
+                   with col_t2:
+                       ticket_body = "Title: [VENDOR QUALITY] Inspection Failure\n\n"
+                       ticket_body += "Severity: " + ("Sev2" if len([d for d in defects if d.get("severity") == "critical"]) > 0 else "Sev3") + "\n"
+                       ticket_body += "Category: Vendor Quality / Workmanship\n\n"
+                       ticket_body += defect_summary
+                       ticket_body += "\nAction Required: Vendor corrective action and root cause analysis"
+                       st.text_area("SIM/T.Corp Ticket (copy and paste):", ticket_body, height=250, key="sim_ticket")
 
        # Inspection history
        history = load_history()
@@ -538,7 +577,7 @@ if process == "Server/Hardware Assembly" and analysis_mode == "Compare Two Image
                ]
            }]
        }
-       response = client.invoke_model(modelId="anthropic.claude-3-haiku-20240307-v1:0", body=json.dumps(body_data))
+       response = client.invoke_model(modelId="us.anthropic.claude-sonnet-4-6", body=json.dumps(body_data))
        result = json.loads(response["body"].read())
        comparison = result["content"][0]["text"]
 
@@ -613,7 +652,7 @@ if uploaded_file is not None:
            prompt += "After the JSON, provide a human-readable report with: Overview, Errors, Warnings, Passed, Not Assessable, Design Score, Recommendations"
            client = boto3.client("bedrock-runtime", region_name="us-west-2")
            body_data = {"anthropic_version": "bedrock-2023-05-31", "max_tokens": 4000, "messages": [{"role": "user", "content": [{"type": "image", "source": {"type": "base64", "media_type": media_type, "data": image_b64}}, {"type": "text", "text": prompt}]}]}
-           response = client.invoke_model(modelId="anthropic.claude-3-haiku-20240307-v1:0", body=json.dumps(body_data))
+           response = client.invoke_model(modelId="us.anthropic.claude-sonnet-4-6", body=json.dumps(body_data))
            result = json.loads(response["body"].read())
            analysis = result["content"][0]["text"]
 

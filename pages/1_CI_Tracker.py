@@ -186,6 +186,60 @@ with tab3:
                 save_ci(ci_data)
                 st.success("Updated!")
                 st.rerun()
+            st.write("---")
+            # Smart routing recommendation
+            p_score = ci.get("priority_score", 0)
+            ci_impact = ci.get("impact", "Medium")
+            ci_effort = ci.get("effort", "Medium")
+            if ci_impact in ["Critical", "High"] and ci_effort in ["Low", "Minimal"]:
+                quadrant = "QUICK WIN"
+                route_msg = "Quick win - vendor can likely implement. Cut a ticket to the vendor for corrective action."
+                route_target = "Vendor"
+            elif ci_impact in ["Critical", "High"] and ci_effort in ["High", "Very High"]:
+                quadrant = "MAJOR PROJECT"
+                route_msg = "Major project - likely needs design or engineering review. Cut a ticket to the design team."
+                route_target = "Design Team"
+            elif ci_impact in ["Low", "Minimal"] and ci_effort in ["Low", "Minimal"]:
+                quadrant = "FILL IN"
+                route_msg = "Fill-in work - low priority, assign to available L4/L5 engineer when bandwidth allows."
+                route_target = "MFG Engineering"
+            else:
+                quadrant = "RECONSIDER"
+                route_msg = "Reconsider - high effort, low impact. Discuss with team before committing resources."
+                route_target = "Team Review"
+            st.info("**" + quadrant + ":** " + route_msg)
+            col_tk1, col_tk2, col_tk3 = st.columns(3)
+            with col_tk1:
+                if st.button("Generate Vendor Ticket", key="vt_" + str(ci["id"])):
+                    vt = "Title: [CI-" + str(ci["id"]) + "] " + ci.get("title", "") + "\n\n"
+                    vt += "Platform: " + ci.get("platform", "") + " " + ci.get("generation", "") + "\n"
+                    vt += "Category: " + ci.get("category", "") + "\n"
+                    vt += "Impact: " + ci.get("impact", "") + " | Effort: " + ci.get("effort", "") + "\n"
+                    vt += "Priority Score: " + str(p_score) + " | Quadrant: " + quadrant + "\n\n"
+                    vt += "Description:\n" + ci.get("description", "") + "\n\n"
+                    vt += "Action Required: Please review and provide implementation plan with timeline."
+                    st.text_area("Vendor ticket:", vt, height=200, key="vt_text_" + str(ci["id"]))
+            with col_tk2:
+                if st.button("Generate Design Ticket", key="dt_" + str(ci["id"])):
+                    dt = "Title: [DESIGN REVIEW] CI-" + str(ci["id"]) + " - " + ci.get("title", "") + "\n\n"
+                    dt += "Platform: " + ci.get("platform", "") + " " + ci.get("generation", "") + "\n"
+                    dt += "Category: " + ci.get("category", "") + "\n"
+                    dt += "Impact: " + ci.get("impact", "") + " | Effort: " + ci.get("effort", "") + "\n"
+                    dt += "Quadrant: " + quadrant + "\n\n"
+                    dt += "Description:\n" + ci.get("description", "") + "\n\n"
+                    dt += "Request: Evaluate feasibility and design changes required. Provide LOE estimate."
+                    st.text_area("Design ticket:", dt, height=200, key="dt_text_" + str(ci["id"]))
+            with col_tk3:
+                if st.button("Generate Email", key="em_" + str(ci["id"])):
+                    em = "Subject: CI-" + str(ci["id"]) + " - " + ci.get("title", "") + " [" + quadrant + "]\n\n"
+                    em += "Team,\n\nA new CI has been assessed and routed to " + route_target + ":\n\n"
+                    em += "CI-" + str(ci["id"]) + ": " + ci.get("title", "") + "\n"
+                    em += "Platform: " + ci.get("platform", "") + " " + ci.get("generation", "") + "\n"
+                    em += "Impact: " + ci.get("impact", "") + " | Effort: " + ci.get("effort", "") + "\n"
+                    em += "Quadrant: " + quadrant + "\n\n"
+                    em += ci.get("description", "") + "\n\n"
+                    em += "Recommended action: " + route_msg + "\n\nRegards"
+                    st.text_area("Email:", em, height=200, key="em_text_" + str(ci["id"]))
             for n in ci.get("notes", []):
                 st.write("- " + n.get("date", "")[:10] + ": " + n.get("text", ""))
 
