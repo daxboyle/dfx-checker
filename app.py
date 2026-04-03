@@ -198,6 +198,28 @@ with st.sidebar.expander("Add Custom Rule"):
            st.success("Added: " + cr_name)
            st.rerun()
 
+with st.sidebar.expander("Bulk Import Rules (CSV)"):
+   st.write("Upload a CSV with columns: name, value, unit, check_type, description")
+   st.write("check_type: minimum, maximum, must have, must not have")
+   sample_csv = "name,value,unit,check_type,description\nMin screw torque,5,in-lbs,minimum,Per spec 123\nMax cable length,24,inches,maximum,Between tie points\nEMI gasket,required,,must have,All panel seams"
+   st.download_button("Download sample CSV", sample_csv, file_name="sample_rules.csv", mime="text/csv")
+   csv_file = st.file_uploader("Upload CSV:", type=["csv"], key="bulk_csv")
+   if csv_file:
+       import csv
+       import io
+       csv_text = csv_file.read().decode("utf-8")
+       reader = csv.DictReader(io.StringIO(csv_text))
+       count = 0
+       for row in reader:
+           if row.get("name"):
+               custom_rules_for_process.append({"name": row.get("name", "").strip(), "value": row.get("value", "").strip(), "unit": row.get("unit", "").strip(), "check_type": row.get("check_type", "minimum").strip(), "description": row.get("description", "").strip()})
+               count += 1
+       if count > 0:
+           custom_rules_all[process] = custom_rules_for_process
+           save_custom_rules(custom_rules_all)
+           st.success("Imported " + str(count) + " rules!")
+           st.rerun()
+
 st.write("Upload a file to check against **" + process + "** rules.")
 
 if process == "Server/Hardware Assembly":
