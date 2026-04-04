@@ -56,7 +56,7 @@ def route_engineer_level(impact, effort):
 history = load_history()
 ci_data = load_ci()
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["Dashboard", "CI Intake", "CI Pipeline", "Impact Matrix", "Semantic Search", "Lessons Learned", "Trends"])
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs(["Dashboard", "CI Intake", "CI Pipeline", "Impact Matrix", "Semantic Search", "Lessons Learned", "Trends", "Ticket Routing"])
 
 with tab1:
     st.subheader("Overview")
@@ -240,6 +240,40 @@ with tab3:
                     em += ci.get("description", "") + "\n\n"
                     em += "Recommended action: " + route_msg + "\n\nRegards"
                     st.text_area("Email:", em, height=200, key="em_text_" + str(ci["id"]))
+            st.write("---")
+            ROUTING_FILE = os.path.join(DATA_DIR, "ticket_routing.json")
+            if os.path.exists(ROUTING_FILE):
+                with open(ROUTING_FILE, "r") as rf:
+                    routing = json.load(rf)
+                cat_routing = routing.get(ci.get("category", "Other"), {"resolver_group": "mfg-engineering", "default_severity": 3})
+                st.info("**Auto-route:** " + ci.get("category", "") + " -> **" + cat_routing["resolver_group"] + "** (Sev-" + str(cat_routing["default_severity"]) + ")")
+                all_groups = sorted(set([v["resolver_group"] for v in routing.values()]))
+                all_groups.append("Other (type below)")
+                default_idx = all_groups.index(cat_routing["resolver_group"]) if cat_routing["resolver_group"] in all_groups else 0
+                override_col1, override_col2 = st.columns([2, 2])
+                with override_col1:
+                    selected_group = st.selectbox("Route to:", all_groups, index=default_idx, key="route_" + str(ci["id"]))
+                with override_col2:
+                    if selected_group == "Other (type below)":
+                        selected_group = st.text_input("Custom resolver group:", key="custom_rg_" + str(ci["id"]))
+                    override_sev = st.selectbox("Severity:", [1, 2, 3, 4, 5], index=cat_routing["default_severity"] - 1, key="osev_" + str(ci["id"]))
+                cat_routing["resolver_group"] = selected_group
+                cat_routing["default_severity"] = override_sev
+                if st.button("Create T.Corp Ticket (Preview)", key="tcorp_" + str(ci["id"])):
+                    tcorp_text = "=== T.CORP TICKET PREVIEW ===\n\n"
+                    tcorp_text += "Title: [CI-" + str(ci["id"]) + "] " + ci.get("title", "") + "\n"
+                    tcorp_text += "Resolver Group: " + cat_routing["resolver_group"] + "\n"
+                    tcorp_text += "Severity: " + str(cat_routing["default_severity"]) + "\n"
+                    tcorp_text += "Category: " + ci.get("category", "") + "\n"
+                    tcorp_text += "Platform: " + ci.get("platform", "") + " " + ci.get("generation", "") + "\n"
+                    tcorp_text += "Vendor: " + ci.get("vendor", "") + "\n"
+                    tcorp_text += "Impact: " + ci.get("impact", "") + " | Effort: " + ci.get("effort", "") + "\n"
+                    tcorp_text += "Priority Score: " + str(ci.get("priority_score", 0)) + "\n\n"
+                    tcorp_text += "Description:\n" + ci.get("description", "") + "\n\n"
+                    tcorp_text += "Recommended Action: " + route_msg + "\n"
+                    tcorp_text += "\n(Once Tickety API is onboarded, this will auto-create the ticket)"
+                    st.text_area("T.Corp ticket preview:", tcorp_text, height=300, key="tcorp_text_" + str(ci["id"]))
+                    st.write("Link: [Create manually](https://t.corp.amazon.com/create)")
             for n in ci.get("notes", []):
                 st.write("- " + n.get("date", "")[:10] + ": " + n.get("text", ""))
 
@@ -445,3 +479,36 @@ with tab6:
                 st.write("**Avg Cycle Time:** " + str(round(sum(cycle_times)/len(cycle_times), 1)) + " days")
     if not history and not cis:
         st.info("No data yet. Run inspections and submit CIs to see trends.")
+
+with tab8:
+    st.subheader("Ticket Routing Configuration")
+    st.write("Configure which resolver group receives tickets for each CI category.")
+    ROUTING_FILE = os.path.join(DATA_DIR, "ticket_routing.json")
+    if os.path.exists(ROUTING_FILE):
+        with open(ROUTING_FILE, "r") as rf:
+            routing = json.load(rf)
+    else:
+        routing = {}
+    st.subheader("Current Routing")
+    updated = False
+    for cat in ["Cable Management", "Thermal", "EMI/Shielding", "Mechanical/Structural", "Electrical", "Assembly Process", "Component Quality", "Fasteners", "Labeling", "Packaging", "Testing", "Other"]:
+        col_r1, col_r2, col_r3 = st.columns([2, 3, 1])
+        with col_r1:
+            st.write("**" + cat + "**")
+        with col_r2:
+            current = routing.get(cat, {}).get("resolver_group", "mfg-engineering")
+            new_rg = st.text_input("Resolver group:", value=current, key="rg_" + cat)
+            if new_rg != current:
+                routing.setdefault(cat, {})["resolver_group"] = new_rg
+                updated = True
+        with col_r3:
+            current_sev = routing.get(cat, {}).get("default_severity", 3)
+            new_sev = st.selectbox("Sev:", [1, 2, 3, 4, 5], index=[1,2,3,4,5].index(current_sev), key="sev_" + cat)
+            if new_sev != current_sev:
+                routing.setdefault(cat, {})["default_severity"] = new_sev
+                updated = True
+    if updated:
+        with open(ROUTING_FILE, "w") as rf:
+            json.dump(routing, rf, indent=2)
+        st.success("Routing updated!")
+        st.rerun()

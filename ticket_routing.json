@@ -1,0 +1,50 @@
+{
+  "Cable Management": {
+    "resolver_group": "mfg-engineering",
+    "default_severity": 3
+  },
+  "Thermal": {
+    "resolver_group": "thermal-design",
+    "default_severity": 3
+  },
+  "EMI/Shielding": {
+    "resolver_group": "emc-engineering",
+    "default_severity": 3
+  },
+  "Mechanical/Structural": {
+    "resolver_group": "mechanical-design",
+    "default_severity": 3
+  },
+  "Electrical": {
+    "resolver_group": "electrical-engineering",
+    "default_severity": 3
+  },
+  "Assembly Process": {
+    "resolver_group": "mfg-engineering",
+    "default_severity": 4
+  },
+  "Component Quality": {
+    "resolver_group": "supply-chain-quality",
+    "default_severity": 3
+  },
+  "Fasteners": {
+    "resolver_group": "mechanical-design",
+    "default_severity": 4
+  },
+  "Labeling": {
+    "resolver_group": "mfg-engineering",
+    "default_severity": 5
+  },
+  "Packaging": {
+    "resolver_group": "mfg-engineering",
+    "default_severity": 4
+  },
+  "Testing": {
+    "resolver_group": "test-engineering",
+    "default_severity": 3
+  },
+  "Other": {
+    "resolver_group": "mfg-engineering",
+    "default_severity": 4
+  }
+}
