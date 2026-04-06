@@ -112,6 +112,8 @@ with tab2:
             ci_submitter = st.text_input("Your name/alias:")
         with col_f:
             ci_role = st.selectbox("Role:", ["MFG Engineer", "Design Engineer", "Quality Engineer", "Vendor", "Supply Chain", "Other"])
+        st.write("**Attachments**")
+        ci_images = st.file_uploader("Upload photos or documents", type=["png", "jpg", "jpeg", "pdf"], accept_multiple_files=True, key="ci_imgs")
         submitted = st.form_submit_button("Submit CI", type="primary")
         if submitted and ci_title:
             score = calc_priority_score(ci_impact, ci_effort)
@@ -126,6 +128,16 @@ with tab2:
                 "updated": datetime.datetime.now().isoformat(), "resolved": None, "outcome": "", "notes": []}
             if "cis" not in ci_data:
                 ci_data["cis"] = []
+            if ci_images:
+                img_dir = os.path.join(DATA_DIR, "ci_uploads", "CI-" + str(new_ci["id"]))
+                os.makedirs(img_dir, exist_ok=True)
+                saved_imgs = []
+                for img in ci_images:
+                    img_path = os.path.join(img_dir, img.name)
+                    with open(img_path, "wb") as imgf:
+                        imgf.write(img.read())
+                    saved_imgs.append(img.name)
+                new_ci["attachments"] = saved_imgs
             ci_data["cis"].append(new_ci)
             save_ci(ci_data)
             st.success("CI-" + str(new_ci["id"]) + " submitted! Priority: " + str(score) + " | Level: " + level)
@@ -274,6 +286,16 @@ with tab3:
                     tcorp_text += "\n(Once Tickety API is onboarded, this will auto-create the ticket)"
                     st.text_area("T.Corp ticket preview:", tcorp_text, height=300, key="tcorp_text_" + str(ci["id"]))
                     st.write("Link: [Create manually](https://t.corp.amazon.com/create)")
+            if ci.get("attachments"):
+                st.write("**Attachments:**")
+                img_dir = os.path.join(DATA_DIR, "ci_uploads", "CI-" + str(ci["id"]))
+                if os.path.exists(img_dir):
+                    img_cols = st.columns(min(len(ci["attachments"]), 4))
+                    for idx, img_name in enumerate(ci["attachments"]):
+                        img_path = os.path.join(img_dir, img_name)
+                        if os.path.exists(img_path) and img_name.lower().endswith((".png", ".jpg", ".jpeg")):
+                            with img_cols[idx % 4]:
+                                st.image(img_path, caption=img_name, width=200)
             for n in ci.get("notes", []):
                 st.write("- " + n.get("date", "")[:10] + ": " + n.get("text", ""))
 

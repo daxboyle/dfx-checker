@@ -150,6 +150,38 @@
       "resolved": null,
       "outcome": "",
       "notes": []
+    },
+    {
+      "id": 6,
+      "title": "TEst",
+      "description": "tesing photo upload",
+      "category": "Assembly Process",
+      "platform": "Server Gen1",
+      "generation": "Gen8",
+      "vendor": "Internal",
+      "source": "Inspection Finding",
+      "impact": "High",
+      "effort": "Medium",
+      "impact_areas": [
+        "Reliability"
+      ],
+      "cross_platform": true,
+      "fpy_impact": "",
+      "cost_impact": "",
+      "submitter": "daxboyle",
+      "submitter_role": "MFG Engineer",
+      "priority_score": 12,
+      "recommended_level": "L5",
+      "status": "Intake",
+      "assigned_to": "",
+      "created": "2026-04-06T11:00:31.546899",
+      "updated": "2026-04-06T11:00:31.546910",
+      "resolved": null,
+      "outcome": "",
+      "notes": [],
+      "attachments": [
+        "Screenshot 2026-03-31 at 8.53.46\u202fPM.png"
+      ]
     }
   ],
   "lessons": [
