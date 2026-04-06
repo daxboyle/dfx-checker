@@ -1,0 +1,13 @@
+{
+  "maxis_endpoint": "https://maxis-service-prod-pdx.amazon.com",
+  "default_folder_id": "",
+  "folder_ids": {
+    "mfg-engineering": "",
+    "mechanical-design": "",
+    "electrical-engineering": "",
+    "thermal-design": "",
+    "emc-engineering": "",
+    "supply-chain-quality": "",
+    "test-engineering": ""
+  }
+}

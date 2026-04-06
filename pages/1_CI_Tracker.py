@@ -271,7 +271,7 @@ with tab3:
                     override_sev = st.selectbox("Severity:", [1, 2, 3, 4, 5], index=cat_routing["default_severity"] - 1, key="osev_" + str(ci["id"]))
                 cat_routing["resolver_group"] = selected_group
                 cat_routing["default_severity"] = override_sev
-                if st.button("Create T.Corp Ticket (Preview)", key="tcorp_" + str(ci["id"])):
+                if st.button("Create T.Corp Ticket", key="tcorp_" + str(ci["id"])):
                     tcorp_text = "=== T.CORP TICKET PREVIEW ===\n\n"
                     tcorp_text += "Title: [CI-" + str(ci["id"]) + "] " + ci.get("title", "") + "\n"
                     tcorp_text += "Resolver Group: " + cat_routing["resolver_group"] + "\n"
@@ -283,7 +283,7 @@ with tab3:
                     tcorp_text += "Priority Score: " + str(ci.get("priority_score", 0)) + "\n\n"
                     tcorp_text += "Description:\n" + ci.get("description", "") + "\n\n"
                     tcorp_text += "Recommended Action: " + route_msg + "\n"
-                    tcorp_text += "\n(Once Tickety API is onboarded, this will auto-create the ticket)"
+                    tcorp_text += "\nTo auto-create: add SIM folder UUID in Ticket Routing tab"
                     st.text_area("T.Corp ticket preview:", tcorp_text, height=300, key="tcorp_text_" + str(ci["id"]))
                     st.write("Link: [Create manually](https://t.corp.amazon.com/create)")
             if ci.get("attachments"):
@@ -533,4 +533,30 @@ with tab8:
         with open(ROUTING_FILE, "w") as rf:
             json.dump(routing, rf, indent=2)
         st.success("Routing updated!")
+        st.rerun()
+    st.write("---")
+    st.subheader("SIM Folder Configuration")
+    st.write("Enter SIM folder UUIDs for each resolver group. Find them at issues.amazon.com/folders/browse")
+    SIM_CONFIG_FILE = os.path.join(DATA_DIR, "sim_config.json")
+    if os.path.exists(SIM_CONFIG_FILE):
+        with open(SIM_CONFIG_FILE, "r") as scf:
+            sim_config = json.load(scf)
+    else:
+        sim_config = {"folder_ids": {}}
+    sim_updated = False
+    default_fid = st.text_input("Default SIM Folder UUID:", value=sim_config.get("default_folder_id", ""), key="default_fid")
+    if default_fid != sim_config.get("default_folder_id", ""):
+        sim_config["default_folder_id"] = default_fid
+        sim_updated = True
+    st.write("**Per-group folder IDs (optional - overrides default):**")
+    for group_name in sorted(sim_config.get("folder_ids", {}).keys()):
+        current_fid = sim_config["folder_ids"].get(group_name, "")
+        new_fid = st.text_input(group_name + ":", value=current_fid, key="fid_" + group_name)
+        if new_fid != current_fid:
+            sim_config["folder_ids"][group_name] = new_fid
+            sim_updated = True
+    if sim_updated:
+        with open(SIM_CONFIG_FILE, "w") as scf:
+            json.dump(sim_config, scf, indent=2)
+        st.success("SIM config saved!")
         st.rerun()
