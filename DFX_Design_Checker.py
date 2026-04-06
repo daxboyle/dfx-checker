@@ -47,6 +47,7 @@ def save_profiles(profiles):
        json.dump(profiles, f, indent=2)
 
 
+st.set_page_config(page_title="DFX Design Checker", page_icon="\U0001f527", layout="wide")
 st.title("DFX Design Checker")
 
 st.sidebar.header("Configuration")
