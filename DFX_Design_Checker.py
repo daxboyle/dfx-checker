@@ -501,7 +501,7 @@ if process == "Server/Hardware Assembly":
    else:
        uploaded_file = None if analysis_mode == "Compare Two Images" else st.file_uploader("Choose an image of the server/hardware", type=["png", "jpg", "jpeg", "webp", "gif"])
 else:
-   upload_type = st.radio("File type:", ["DXF Drawing", "STEP File (3D)", "PDF Drawing", "Image"], horizontal=True)
+   upload_type = st.radio("File type:", ["DXF Drawing", "STEP File (3D)", "PDF Drawing", "Image", "Compare Two Drawings"], horizontal=True)
    if upload_type == "DXF Drawing":
        uploaded_file = st.file_uploader("Choose a .dxf file", type=["dxf"])
    elif upload_type == "STEP File (3D)":
@@ -510,6 +510,250 @@ else:
        uploaded_file = st.file_uploader("Choose a .pdf file", type=["pdf"])
    else:
        uploaded_file = st.file_uploader("Choose an image", type=["png", "jpg", "jpeg", "webp", "gif"])
+   if upload_type == "Compare Two Drawings":
+       uploaded_file = None
+       st.subheader("Compare Two Drawings")
+       st.write("Upload before and after versions to see what changed.")
+       col_before, col_after = st.columns(2)
+       with col_before:
+           st.write("**Before (Original)**")
+           files_before = st.file_uploader("Upload original(s)", type=["dxf", "png", "jpg", "jpeg", "pdf"], key="draw_before", accept_multiple_files=True)
+       with col_after:
+           st.write("**After (Revised)**")
+           files_after = st.file_uploader("Upload revised(s)", type=["dxf", "png", "jpg", "jpeg", "pdf"], key="draw_after", accept_multiple_files=True)
+       if files_before and files_after:
+           if len(files_before) != len(files_after):
+               st.warning("Before has " + str(len(files_before)) + " file(s), After has " + str(len(files_after)) + " file(s). Please upload the same number of files.")
+           else:
+               st.write("Comparing " + str(len(files_before)) + " file pair(s)...")
+               for pair_idx in range(len(files_before)):
+                   file_before = files_before[pair_idx]
+                   file_after = files_after[pair_idx]
+                   st.write("---")
+                   st.subheader("Pair " + str(pair_idx + 1) + ": " + file_before.name + " vs " + file_after.name)
+                   ext_b = file_before.name.split(".")[-1].lower()
+                   ext_a = file_after.name.split(".")[-1].lower()
+                   if ext_b == "dxf" and ext_a == "dxf":
+                       import tempfile as tf
+                       tmp_b = tf.NamedTemporaryFile(delete=False, suffix=".dxf"); tmp_b.write(file_before.read()); tmp_b.close()
+                       tmp_a = tf.NamedTemporaryFile(delete=False, suffix=".dxf"); tmp_a.write(file_after.read()); tmp_a.close()
+                       doc_b = ezdxf.readfile(tmp_b.name); doc_a = ezdxf.readfile(tmp_a.name)
+                       msp_b = doc_b.modelspace(); msp_a = doc_a.modelspace()
+                       circles_b = list(msp_b.query("CIRCLE")); circles_a = list(msp_a.query("CIRCLE"))
+                       lines_b = list(msp_b.query("LINE")); lines_a = list(msp_a.query("LINE"))
+                       arcs_b = list(msp_b.query("ARC")); arcs_a = list(msp_a.query("ARC"))
+                       col_s1, col_s2 = st.columns(2)
+                       with col_s1: st.write("**Before:** " + str(len(circles_b)) + " circles, " + str(len(lines_b)) + " lines, " + str(len(arcs_b)) + " arcs")
+                       with col_s2: st.write("**After:** " + str(len(circles_a)) + " circles, " + str(len(lines_a)) + " lines, " + str(len(arcs_a)) + " arcs")
+                       fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 6))
+                       for ax in [ax1, ax2, ax3]: ax.set_aspect("equal"); ax.set_facecolor("#1a1a2e")
+                       fig.patch.set_facecolor("#1a1a2e")
+                       ax1.set_title("Before", color="white")
+                       for ln in lines_b:
+                           s, e = ln.dxf.start, ln.dxf.end; ax1.plot([s.x, e.x], [s.y, e.y], color="#4488ff", linewidth=1)
+                       for c in circles_b: ax1.add_patch(plt.Circle((c.dxf.center.x, c.dxf.center.y), c.dxf.radius, fill=False, color="#4488ff", linewidth=1))
+                       ax2.set_title("After", color="white")
+                       for ln in lines_a:
+                           s, e = ln.dxf.start, ln.dxf.end; ax2.plot([s.x, e.x], [s.y, e.y], color="#44ff88", linewidth=1)
+                       for c in circles_a: ax2.add_patch(plt.Circle((c.dxf.center.x, c.dxf.center.y), c.dxf.radius, fill=False, color="#44ff88", linewidth=1))
+                       ax3.set_title("Overlay", color="white")
+                       for ln in lines_b:
+                           s, e = ln.dxf.start, ln.dxf.end; ax3.plot([s.x, e.x], [s.y, e.y], color="#4488ff", linewidth=1, alpha=0.7)
+                       for c in circles_b: ax3.add_patch(plt.Circle((c.dxf.center.x, c.dxf.center.y), c.dxf.radius, fill=False, color="#4488ff", linewidth=1, alpha=0.7))
+                       for ln in lines_a:
+                           s, e = ln.dxf.start, ln.dxf.end; ax3.plot([s.x, e.x], [s.y, e.y], color="#44ff88", linewidth=1, alpha=0.7)
+                       for c in circles_a: ax3.add_patch(plt.Circle((c.dxf.center.x, c.dxf.center.y), c.dxf.radius, fill=False, color="#44ff88", linewidth=1, alpha=0.7))
+                       for ax in [ax1, ax2, ax3]: ax.autoscale(); ax.margins(0.1); ax.tick_params(colors="white")
+                       plt.tight_layout(); st.pyplot(fig)
+                       changes = []
+                       if len(circles_a) != len(circles_b): changes.append("Circles: " + str(len(circles_b)) + " -> " + str(len(circles_a)))
+                       if len(lines_a) != len(lines_b): changes.append("Lines: " + str(len(lines_b)) + " -> " + str(len(lines_a)))
+                       if len(arcs_a) != len(arcs_b): changes.append("Arcs: " + str(len(arcs_b)) + " -> " + str(len(arcs_a)))
+                       if changes:
+                           for ch in changes: st.write("- " + ch)
+                       else: st.success("No geometric changes in this pair.")
+                       # PDF export for DXF comparison
+                       import tempfile as dxf_tf
+                       overlay_tmp = dxf_tf.mktemp(suffix=".png")
+                       fig.savefig(overlay_tmp, dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
+                       from fpdf import FPDF as DxfPDF
+                       dxf_pdf = DxfPDF()
+                       dxf_pdf.add_page("L")
+                       dxf_pdf.set_font("Helvetica", "B", 20)
+                       dxf_pdf.cell(0, 15, "DXF Drawing Comparison Report", new_x="LMARGIN", new_y="NEXT", align="C")
+                       dxf_pdf.set_font("Helvetica", "", 12)
+                       dxf_pdf.cell(0, 10, "Before: " + clean_pdf(file_before.name), new_x="LMARGIN", new_y="NEXT")
+                       dxf_pdf.cell(0, 10, "After: " + clean_pdf(file_after.name), new_x="LMARGIN", new_y="NEXT")
+                       dxf_pdf.cell(0, 10, "Added features: " + str(len(added_circs) + len(added_lns)), new_x="LMARGIN", new_y="NEXT")
+                       dxf_pdf.cell(0, 10, "Removed features: " + str(len(removed_circs) + len(removed_lns)), new_x="LMARGIN", new_y="NEXT")
+                       dxf_pdf.ln(5)
+                       dxf_pdf.image(overlay_tmp, x=10, w=270)
+                       dxf_pdf.ln(5)
+                       if changes:
+                           dxf_pdf.set_font("Helvetica", "B", 14)
+                           dxf_pdf.cell(0, 10, "Changes:", new_x="LMARGIN", new_y="NEXT")
+                           dxf_pdf.set_font("Helvetica", "", 10)
+                           for ch in changes: dxf_pdf.cell(0, 7, "- " + ch, new_x="LMARGIN", new_y="NEXT")
+                       dxf_pdf_bytes = dxf_pdf.output()
+                       os.unlink(overlay_tmp)
+                       st.download_button(
+                           label="Download DXF Comparison Report (Pair " + str(pair_idx + 1) + ")",
+                           data=bytes(dxf_pdf_bytes),
+                           file_name="dxf_comparison_pair_" + str(pair_idx + 1) + ".pdf",
+                           mime="application/pdf",
+                           key="dl_dxf_pair_" + str(pair_idx)
+                       )
+                       os.unlink(tmp_b.name); os.unlink(tmp_a.name)
+                   else:
+                        import boto3
+                        file_before.seek(0); file_after.seek(0)
+                        pages_before = []
+                        pages_after = []
+                        if ext_b == "pdf":
+                            import fitz, tempfile as tf
+                            tmp = tf.NamedTemporaryFile(delete=False, suffix=".pdf"); tmp.write(file_before.read()); tmp.close()
+                            pdf_doc = fitz.open(tmp.name)
+                            for pg in range(len(pdf_doc)): pages_before.append(pdf_doc[pg].get_pixmap(dpi=200).tobytes("png"))
+                            pdf_doc.close(); os.unlink(tmp.name)
+                        else: pages_before.append(file_before.read())
+                        if ext_a == "pdf":
+                            import fitz, tempfile as tf
+                            tmp = tf.NamedTemporaryFile(delete=False, suffix=".pdf"); tmp.write(file_after.read()); tmp.close()
+                            pdf_doc = fitz.open(tmp.name)
+                            for pg in range(len(pdf_doc)): pages_after.append(pdf_doc[pg].get_pixmap(dpi=200).tobytes("png"))
+                            pdf_doc.close(); os.unlink(tmp.name)
+                        else: pages_after.append(file_after.read())
+                        st.write("Before: " + str(len(pages_before)) + " page(s) | After: " + str(len(pages_after)) + " page(s)")
+                        max_pages = max(len(pages_before), len(pages_after))
+                        # Show all pages side by side first
+                        for pg_idx in range(max_pages):
+                            if pg_idx < len(pages_before) and pg_idx < len(pages_after):
+                                col_p1, col_p2 = st.columns(2)
+                                with col_p1: st.image(pages_before[pg_idx], caption="Before Page " + str(pg_idx+1), use_container_width=True)
+                                with col_p2: st.image(pages_after[pg_idx], caption="After Page " + str(pg_idx+1), use_container_width=True)
+                            elif pg_idx < len(pages_after):
+                                st.warning("Page " + str(pg_idx+1) + " only in After")
+                                st.image(pages_after[pg_idx], caption="After Page " + str(pg_idx+1), use_container_width=True)
+                            elif pg_idx < len(pages_before):
+                                st.warning("Page " + str(pg_idx+1) + " only in Before")
+                                st.image(pages_before[pg_idx], caption="Before Page " + str(pg_idx+1), use_container_width=True)
+                        if st.button("Analyze All Pages", key="analyze_all_" + str(pair_idx), type="primary"):
+                            all_results = []
+                            all_markups = []
+                            progress = st.progress(0)
+                            min_pages = min(len(pages_before), len(pages_after))
+                            for pg_idx in range(min_pages):
+                                with st.spinner("Analyzing page " + str(pg_idx+1) + " of " + str(min_pages) + "..."):
+                                    pg_b = pages_before[pg_idx]; pg_a = pages_after[pg_idx]
+                                    b64_b = base64.b64encode(pg_b).decode()
+                                    b64_a = base64.b64encode(pg_a).decode()
+                                    prompt = "You are an expert manufacturing engineer comparing two versions of a drawing.\n"
+                                    prompt += "Image 1 is BEFORE. Image 2 is AFTER.\n\n"
+                                    prompt += "Be THOROUGH - examine every dimension, note, tolerance, feature, and detail.\n"
+                                    prompt += "List ALL changes no matter how small.\n\n"
+                                    prompt += "If drawings are identical, say so.\n\n"
+                                    prompt += "## Changes Found\n"
+                                    prompt += "For each change: number, description, BEFORE value -> AFTER value, location on drawing.\n\n"
+                                    prompt += "## Manufacturing Impact Assessment\n"
+                                    prompt += "For EACH change you MUST provide SPECIFIC manufacturing impacts such as:\n"
+                                    prompt += "- New or modified fixture/tooling required\n"
+                                    prompt += "- CNC program changes (new tool path, additional operation)\n"
+                                    prompt += "- Bend sequence or press brake tooling changes\n"
+                                    prompt += "- Assembly sequence or work instruction updates\n"
+                                    prompt += "- Inspection criteria changes (new GD&T, tighter tolerance = higher scrap)\n"
+                                    prompt += "- Test procedure or test fixture updates\n"
+                                    prompt += "- Supplier tooling or raw material spec changes\n\n"
+                                    prompt += "## Cost and Cycle Time Estimate\n"
+                                    prompt += "For each change estimate: additional cost per unit ($X.XX), cycle time impact (seconds/minutes), one-time costs (tooling, fixtures, programming, training).\n"
+                                    prompt += "Provide a total estimated impact for a 1000-unit run. Use ranges if uncertain (e.g. +$0.50-$2.00/unit).\n\n"
+                                    prompt += "## ECN/Process Change Requirements\n"
+                                    prompt += "Flag changes requiring: formal ECN, updated work instructions, operator training, quality plan updates, supplier notification.\n\n"
+                                    prompt += "## Summary\n"
+                                    prompt += "Total changes, combined cost/cycle impact, and recommended actions before implementing."
+                                    from botocore.config import Config as BotoConfig
+                                    client = boto3.client("bedrock-runtime", region_name="us-west-2", config=BotoConfig(read_timeout=120))
+                                    bd = {"anthropic_version": "bedrock-2023-05-31", "max_tokens": 4000, "messages": [{"role": "user", "content": [{"type": "text", "text": "BEFORE page " + str(pg_idx+1) + ":"}, {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": b64_b}}, {"type": "text", "text": "AFTER page " + str(pg_idx+1) + ":"}, {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": b64_a}}, {"type": "text", "text": prompt}]}]}
+                                    resp = client.invoke_model(modelId="us.anthropic.claude-sonnet-4-6", body=json.dumps(bd))
+                                    ai_text = json.loads(resp["body"].read())["content"][0]["text"]
+                                    all_results.append({"page": pg_idx+1, "text": ai_text})
+                                    # Get markup coordinates
+                                    mp = "You must locate EVERY change on this drawing image.\n"
+                                    mp += "For EACH change listed below, estimate its x,y position as a percentage (0,0=top-left, 100,100=bottom-right).\n"
+                                    mp += "Be precise - look at where the actual feature is on the drawing.\n"
+                                    mp += "Return ONLY a JSON block in triple-backtick json fence:\n"
+                                    mp += '{\"changes\": [{\"label\": \"short description\", \"x_pct\": 50, \"y_pct\": 30, \"type\": \"added/removed/modified\"}]}\n'
+                                    mp += "You MUST include a coordinate entry for EVERY change found. Do not skip any."
+                                    bd2 = {"anthropic_version": "bedrock-2023-05-31", "max_tokens": 2000, "messages": [{"role": "user", "content": [{"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": b64_a}}, {"type": "text", "text": "Here are ALL the changes found between before and after versions of this drawing:\n" + ai_text + "\n\n" + mp}]}]}
+                                    resp2 = client.invoke_model(modelId="us.anthropic.claude-sonnet-4-6", body=json.dumps(bd2))
+                                    mt = json.loads(resp2["body"].read())["content"][0]["text"]
+                                    mchanges = []
+                                    try:
+                                        jm = chr(96)*3 + "json"; js = mt.find(jm)
+                                        if js >= 0:
+                                            je = mt.find(chr(96)*3, js+len(jm))
+                                            if je >= 0: mchanges = json.loads(mt[js+len(jm):je].strip()).get("changes", [])
+                                    except: pass
+                                    # Draw markup on after image
+                                    from PIL import Image as PI, ImageDraw as PD, ImageFont as PF
+                                    import io, math
+                                    img = PI.open(io.BytesIO(pg_a)).convert("RGB")
+                                    if mchanges:
+                                        drw = PD.Draw(img); w, h = img.size
+                                        try: fnt = PF.truetype("/System/Library/Fonts/Helvetica.ttc", max(14, min(w,h)//40))
+                                        except: fnt = PF.load_default()
+                                        cm = {"added": (255,50,50), "removed": (255,170,0), "modified": (255,255,0)}
+                                        cr = max(25, min(w,h)//20)
+                                        for ci, ch in enumerate(mchanges):
+                                            cx = int(ch.get("x_pct",50)/100*w); cy = int(ch.get("y_pct",50)/100*h)
+                                            clr = cm.get(ch.get("type","modified"), (255,255,0))
+                                            lb = str(ci+1) + ": " + ch.get("label","")[:25]
+                                            for k in range(20):
+                                                a1 = k*2*math.pi/20; a2 = (k+1)*2*math.pi/20; ma = (a1+a2)/2
+                                                bmp = cr + (8 if k%2==0 else -3)
+                                                drw.line([(int(cx+cr*math.cos(a1)),int(cy+cr*math.sin(a1))),(int(cx+bmp*math.cos(ma)),int(cy+bmp*math.sin(ma))),(int(cx+cr*math.cos(a2)),int(cy+cr*math.sin(a2)))], fill=clr, width=3)
+                                            bb = drw.textbbox((0,0), lb, font=fnt); tw = bb[2]-bb[0]; tht = bb[3]-bb[1]
+                                            lx = max(5, min(cx-tw//2, w-tw-5)); ly = cy-cr-tht-10
+                                            if ly < 5: ly = cy+cr+5
+                                            drw.rectangle([lx-3,ly-2,lx+tw+3,ly+tht+2], fill=(0,0,0))
+                                            drw.text((lx,ly), lb, fill=clr, font=fnt)
+                                    all_markups.append(img)
+                                progress.progress((pg_idx+1) / min_pages)
+                            # Display all results
+                            for r_idx, r in enumerate(all_results):
+                                st.write("---")
+                                st.subheader("Page " + str(r["page"]) + " Analysis")
+                                if r_idx < len(all_markups):
+                                    st.image(all_markups[r_idx], caption="Markup Page " + str(r["page"]), use_container_width=True)
+                                    st.markdown("Red=Added | Orange=Removed | Yellow=Modified")
+                                st.markdown(r["text"])
+                            # Generate combined PDF report
+                            from fpdf import FPDF as CombPDF
+                            import tempfile as rpt_tf
+                            rpdf = CombPDF()
+                            rpdf.add_page()
+                            rpdf.set_font("Helvetica", "B", 20)
+                            rpdf.cell(0, 15, "Drawing Comparison Report", new_x="LMARGIN", new_y="NEXT", align="C")
+                            rpdf.set_font("Helvetica", "", 12)
+                            rpdf.cell(0, 10, "Before: " + clean_pdf(file_before.name), new_x="LMARGIN", new_y="NEXT")
+                            rpdf.cell(0, 10, "After: " + clean_pdf(file_after.name), new_x="LMARGIN", new_y="NEXT")
+                            rpdf.cell(0, 10, "Pages compared: " + str(min_pages), new_x="LMARGIN", new_y="NEXT")
+                            rpdf.ln(5)
+                            for r_idx, r in enumerate(all_results):
+                                rpdf.add_page()
+                                rpdf.set_font("Helvetica", "B", 16)
+                                rpdf.cell(0, 12, "Page " + str(r["page"]), new_x="LMARGIN", new_y="NEXT")
+                                if r_idx < len(all_markups):
+                                    mtmp = rpt_tf.mktemp(suffix=".png")
+                                    all_markups[r_idx].save(mtmp)
+                                    rpdf.image(mtmp, x=10, w=190)
+                                    rpdf.ln(5)
+                                    os.unlink(mtmp)
+                                rpdf.set_font("Helvetica", "", 10)
+                                for rl in r["text"].split("\n"):
+                                    cleaned = clean_pdf(rl.replace("#", "").strip())
+                                    if cleaned: rpdf.cell(0, 6, cleaned, new_x="LMARGIN", new_y="NEXT")
+                            rpdf_bytes = rpdf.output()
+                            st.download_button(label="Download Full Comparison Report (All Pages)", data=bytes(rpdf_bytes), file_name="comparison_report_all_pages.pdf", mime="application/pdf", key="dl_all_" + str(pair_idx))
 if process == "Server/Hardware Assembly" and analysis_mode == "Compare Two Images" and uploaded_file_a is not None and uploaded_file_b is not None:
    import boto3
    from PIL import Image as PILImage
