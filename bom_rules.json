@@ -1,0 +1,58 @@
+[
+  {
+    "id": "BOM-001",
+    "name": "Part Number Required",
+    "check": "pn",
+    "severity": "error",
+    "description": "Every row must have a part number"
+  },
+  {
+    "id": "BOM-002",
+    "name": "Description Required",
+    "check": "desc",
+    "severity": "error",
+    "description": "Every row must have a description"
+  },
+  {
+    "id": "BOM-003",
+    "name": "Quantity Required",
+    "check": "qty",
+    "severity": "error",
+    "description": "Every row must have quantity > 0"
+  },
+  {
+    "id": "BOM-004",
+    "name": "Unit Cost Required",
+    "check": "cost",
+    "severity": "warning",
+    "description": "Every row should have unit cost"
+  },
+  {
+    "id": "BOM-005",
+    "name": "Vendor Specified",
+    "check": "vendor",
+    "severity": "warning",
+    "description": "Every row should specify vendor"
+  },
+  {
+    "id": "BOM-006",
+    "name": "No Duplicate PNs",
+    "check": "dupes",
+    "severity": "error",
+    "description": "Each part number once only"
+  },
+  {
+    "id": "BOM-007",
+    "name": "Revision Level",
+    "check": "rev",
+    "severity": "warning",
+    "description": "Parts should have revision level"
+  },
+  {
+    "id": "BOM-008",
+    "name": "Unit of Measure",
+    "check": "uom",
+    "severity": "warning",
+    "description": "Each row should have UOM"
+  }
+]
